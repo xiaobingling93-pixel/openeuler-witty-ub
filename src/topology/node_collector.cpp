@@ -22,30 +22,30 @@ OP_RET NodeCollector::StartDb()
             make_tuple("slotId", "TEXT", true, false), make_tuple("hostname", "TEXT", false, false),
             make_tuple("ipAddrs", "TEXT", false, false), make_tuple("chipNum", "TEXT", true, false),
             make_tuple("dieNum", "TEXT", true, false), make_tuple("chipType", "TEXT", false, false)}));
-        if (ret != SUCCESS) {
-            return ret;
-        }
-        ret = db->CreateTable("UbController",
-            vector<tuple<string, string, bool, bool>>(
-                {make_tuple("dieGuid", "TEXT", true, false), make_tuple("ubcEid", "TEXT", true, false),
-                    make_tuple("deviceId", "TEXT", true, false), make_tuple("slotId", "TEXT", true, false),
-                    make_tuple("chipId", "TEXT", true, false), make_tuple("dieId", "TEXT", true, false),
-                    make_tuple("primaryCna", "TEXT", true, true), make_tuple("portIds", "TEXT", true, false),
-                    make_tuple("dieState", "TEXT", true, false), make_tuple("ubcState", "TEXT", true, false)}));
-        if (ret != SUCCESS) {
-            return ret;
-        }
-        ret = db->CreateTable("Port",
-            vector<tuple<string, string, bool, bool>>(
-                {make_tuple("portId", "TEXT", true, true), make_tuple("portCna", "TEXT", true, false),
-                    make_tuple("primaryCna", "TEXT", true, true), make_tuple("deviceId", "TEXT", true, false),
-                    make_tuple("portState", "TEXT", true, false), make_tuple("remotePortId", "TEXT", true, false),
-                    make_tuple("remoteDeviceId", "TEXT", true, false), make_tuple("remoteSlotId", "TEXT", true, false),
-                    make_tuple("remoteUbpuId", "TEXT", true, false), make_tuple("remoteIouId", "TEXT", true, false)}));
-        if (ret != SUCCESS) {
-            return ret;
-        }
-        return SUCCESS;
+    if (ret != SUCCESS) {
+        return ret;
+    }
+    ret = db->CreateTable("UbController",
+        vector<tuple<string, string, bool, bool>>(
+            {make_tuple("dieGuid", "TEXT", true, false), make_tuple("ubcEid", "TEXT", true, false),
+                make_tuple("deviceId", "TEXT", true, false), make_tuple("slotId", "TEXT", true, false),
+                make_tuple("chipId", "TEXT", true, false), make_tuple("dieId", "TEXT", true, false),
+                make_tuple("primaryCna", "TEXT", true, true), make_tuple("portIds", "TEXT", true, false),
+                make_tuple("dieState", "TEXT", true, false), make_tuple("ubcState", "TEXT", true, false)}));
+    if (ret != SUCCESS) {
+        return ret;
+    }
+    ret = db->CreateTable("Port",
+        vector<tuple<string, string, bool, bool>>(
+            {make_tuple("portId", "TEXT", true, true), make_tuple("portCna", "TEXT", true, false),
+                make_tuple("primaryCna", "TEXT", true, true), make_tuple("deviceId", "TEXT", true, false),
+                make_tuple("portState", "TEXT", true, false), make_tuple("remotePortId", "TEXT", true, false),
+                make_tuple("remoteDeviceId", "TEXT", true, false), make_tuple("remoteSlotId", "TEXT", true, false),
+                make_tuple("remoteUbpuId", "TEXT", true, false), make_tuple("remoteIouId", "TEXT", true, false)}));
+    if (ret != SUCCESS) {
+        return ret;
+    }
+    return SUCCESS;
 }
 shared_ptr<Database> NodeCollector::GetDb()
 {
@@ -97,8 +97,8 @@ OP_RET NodeCollector::QueryHisNodeData(
     for (auto data_map : res) {
         topology::node::Node device;
         topology::node::DataMapToObj(data_map, device);
-        nodes.push_back(std::make_shared<Node>(device.deviceId, decvice.slotId, device.hostname, device.ipAddrs,
-            device.chipNum, device.dieNum, deice.chipType));
+        nodes.push_back(std::make_shared<Node>(device.deviceId, device.slotId, device.hostname, device.ipAddrs,
+            device.chipNum, device.dieNum, device.chipType));
     }
     return ret;
 }
@@ -140,8 +140,8 @@ OP_RET NodeCollector::QueryCurDeviceData(vector<std::shared_ptr<topology::node::
     for (auto data_map : res) {
         topology::node::Node device;
         topology::node::DataMapToObj(data_map, device);
-        nodes.push_back(std::make_shared<Node>(device.deviceId, decvice.slotId, device.hostname, device.ipAddrs,
-            device.chipNum, device.dieNum, deice.chipType));
+        nodes.push_back(std::make_shared<Node>(device.deviceId, device.slotId, device.hostname, device.ipAddrs,
+            device.chipNum, device.dieNum, device.chipType));
     }
     return ret;
 }

@@ -30,7 +30,7 @@ if(ENABLE_DAEMON_FEATURE)
     add_compile_definitions(ENABLE_DAEMON_FEATURE)
 endif()
 if(ENABLE_TOOL_FEATURE)
-    add_compile_definitions(ENABLE_DAEMON_FEATURE)
+    add_compile_definitions(ENABLE_TOOL_FEATURE)
 endif()
 
 add_executable(witty-ub-topo

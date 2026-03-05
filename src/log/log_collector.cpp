@@ -33,7 +33,7 @@ namespace failure::log {
 
     RackResult LogCollector::Start()
     {
-        auto ReaderLoopOnce = [&](auto &reader) {
+        auto ReaderLoopOnce = [&](auto& reader) {
             try {
                 reader->CreateHandle();
             }
@@ -47,7 +47,7 @@ namespace failure::log {
                 if (!event) {
                     break;
                 }
-                if (!query_.Match(event)) {
+                if (!query_.Match(*event)) {
                     continue;
                 }
                 {
@@ -57,7 +57,7 @@ namespace failure::log {
             }
 
             reader->DestroyHandle();
-        };
+            };
 
         if (running_.load(std::memory_order_acquire)) {
             return RACK_OK;
@@ -78,11 +78,11 @@ namespace failure::log {
             });
         }
 #else
-        LOG_DEBUG << "LogColletor running in tool mode with per-reader threads (run once)";
+        LOG_DEBUG << "LogCollector running in tool mode with per-reader threads (run once)";
         for (auto reader : readers_) {
             workerThreads_.emplace_back([&,reader]() {
                 ReaderLoopOnce(reader);
-            });
+                });
         }
         for (auto& t : workerThreads_) {
             if (t.joinable()) {
@@ -95,13 +95,13 @@ namespace failure::log {
 #endif
 
         return RACK_OK;
-    };
+    }
 
     void LogCollector::Stop()
     {
 #ifndef TOOL_MODE
         running_.store(false, std::memory_order_release);
-        for(auto& t : workerThreads_) {
+        for (auto& t : workerThreads_) {
             if (t.joinable()) {
                 t.join();
             }
@@ -154,7 +154,7 @@ namespace failure::log {
                         logCells.push_back(path);
                     }
                     else if (std::filesystem::is_directory(p)) {
-                        for (const auto& entry : std:: filesystem::directory_iterator(p)) {
+                        for (const auto& entry : std::filesystem::directory_iterator(p)) {
                             if (entry.path().extension() == ".log") {
                                 logCells.push_back(entry.path().string());
                             }
@@ -206,9 +206,9 @@ namespace failure::log {
         auto it = argMap.find("pod_mode");
         if (it == argMap.end()) {
             LOG_ERROR << "missing argument pod_mode";
-            return RACL_FAIL;
+            return RACK_FAIL;
         }
-        if (it -> second == "on") {
+        if (it->second == "on") {
             podMode_ = true;
         }
         return RACK_OK;
@@ -218,7 +218,7 @@ namespace failure::log {
     {
         // TODO: 支持可配置
         input_ = "../data/failure_mode.json";
-        output_ = "../data/faulure_event.json";
+        output_ = "../data/failure_event.json";
 
         std::filesystem::path outFile = output_;
         if (std::filesystem::exists(outFile)) {
@@ -226,7 +226,7 @@ namespace failure::log {
         }
         ofs_.open(output_, std::ios::app);
         if (!ofs_.is_open()) {
-            LOG_ERROR << "failed to open output files: " << output_;
+            LOG_ERROR << "failed to open output file: " << output_;
             return RACK_FAIL;
         }
         static constexpr size_t kBufSize = 1 << 20;
@@ -234,17 +234,17 @@ namespace failure::log {
         ofs_.rdbuf()->pubsetbuf(buf, kBufSize);
         std::ios::sync_with_stdio(false);
 
-        return RACK_OK
+        return RACK_OK;
     }
 
-    RackResult LogCollector::ParseLogPath(const std::unordered_map<std::string>& argMap)
+    RackResult LogCollector::ParseLogPath(const std::unordered_map<std::string, std::string>& argMap)
     {
         auto ComponentOf = [](const std::string& arg) -> std::string {
             auto p = arg.find('_');
             return (p == std::string::npos) ? arg : arg.substr(0, p);
-        }
+            };
 
-        auto HandleLogPath = [&](consr std::string& arg, bool podRequired, bool podSplitAndStrip) -> RackResult {
+        auto HandleLogPath = [&](const std::string& arg, bool podRequired, bool podSplitAndStrip) -> RackResult {
             const std::string component = ComponentOf(arg);
             auto it = argMap.find(arg);
             if (podMode_) {
@@ -270,26 +270,26 @@ namespace failure::log {
             if (it != argMap.end()) {
                 customizedLogPath_[component].push_back(it -> second);
             }
-            return RACK_OK
-        };
+            return RACK_OK;
+            };
 
         if (HandleLogPath("ubsocket_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
         if (HandleLogPath("umq_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
         if (HandleLogPath("liburma_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("urmacore_log_path", /*podRequired=*/false, /*podSplitAndStrip=*/true) != false) return RACK_FAIL;
+        if (HandleLogPath("urmacore_log_path", /*podRequired=*/false, /*podSplitAndStrip=*/false) != RACK_OK) return RACK_FAIL;
         if (HandleLogPath("libudma_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
         if (HandleLogPath("udmacore_log_path", /*podRequired=*/false, /*podSplitAndStrip=*/false) != RACK_OK) return RACK_FAIL;
     
         return RACK_OK;
     }
 
-    RackResult LogCollector::ParseQueryCondition(const std::unordered_map<std::string>& argMap)
+    RackResult LogCollector::ParseQueryCondition(const std::unordered_map<std::string, std::string>& argMap)
     {
         std::unordered_map<std::string, std::string>::const_iterator it;
 
         if ((it = argMap.find("start_time")) == argMap.end()) {
             LOG_ERROR << "missing argument start_time";
-            retur RACK_FAIL;
+            return RACK_FAIL;
         }
         auto startTime = utils::DatetimeStrToTimestamp(it->second);
         if (!startTime) {
@@ -311,14 +311,14 @@ namespace failure::log {
 
         if ((it = argMap.find("event_type")) != argMap.end()) {
             std::vector<std::string> eventTypes;
-            utils::Split(eventType, it->second, ',');
-            for (const std::string& eventType : eventType) {
+            utils::Split(eventTypes, it->second, ',');
+            for (const std::string& eventType : eventTypes) {
                 query_.eventTypes.push_back(EventTypeOptionFromString(eventType));
             }
         }
         if ((it = argMap.find("pod_id")) != argMap.end()) {
             std::vector<std::string> podIds;
-            utils::Split(podId, it->second, ',');
+            utils::Split(podIds, it->second, ',');
             for (const std::string& podId : podIds) {
                 query_.podIds.push_back(podId);
             }
@@ -327,7 +327,7 @@ namespace failure::log {
             std::vector<std::string> localEids;
             utils::Split(localEids, it->second, ',');
             for (const std::string& localEid : localEids) {
-                query_.localEids.push_back(lcoalEid);
+                query_.localEids.push_back(localEid);
             }
         }
         if ((it = argMap.find("jetty_id")) != argMap.end()) {

@@ -9,7 +9,7 @@ namespace rack::com {
 class RackHttpServer {
 public:
     static RackHttpServer &GetInstance();
-    static bool Initialize(int port=8080);
+    static bool Initialize(int port = 8080);
     RackHttpServer(const RackHttpServer &) = delete;
     RackHttpServer &operator=(const RackHttpServer &) = delete;
     ~RackHttpServer(){

@@ -7,7 +7,7 @@
 #include "logger.h"
 
 using namespace ubse::context;
-using namespce failure::log;
+using namespace failure::log;
 
 UbseContext& g_rackContext = UbseContext::GetInstance();
 
@@ -62,7 +62,7 @@ int main(int argc, char* argv[])
     LOG_DEBUG << "Start analyze parameters";
     g_rackContext.ParseArgs(argc, argv);
     RegisterModules();
-    CreateModule();
+    CreateModules();
     RackResult ret = g_rackContext.Run(argc, argv);
     UnInitializeAndStopModules();
     rack::logger::shutdown();

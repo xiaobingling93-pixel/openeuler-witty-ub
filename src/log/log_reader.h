@@ -1,37 +1,33 @@
-#define MODULE_NAME "LOG"
+#include <vector>
 
+#include "failure_def.h"
 #include "log_parser.h"
 
-#include "logger.h"
-
 namespace failure::log {
-    void LogParser::AddFailureMode(const FailureMode& mode)
-    {
-        if (mode.isMultiline) {
-            multiLineTemplates_.emplace_back(mode);
-        }
-        else {
-            singleLineTemplates_.emplace_back(mode);
-        }
-    }
+    class LogReader {
+    public:
+        LogReader(DataSourceOption option, const std::string& path, int64_t startTime, int64_t endTime);
+        ~LogReader();
 
-    std::optional<std::pair<LogTemplate, std::unordered_map<std::string, std::stringf>>> LogParser::MatchMultiLineTemplate(const std::string& line) const
-    {
-        for (const LogTemplate& tmpl : multiLineTemplates_) {
-            if (auto attributes = tmpl.Match(line)) {
-                return std::make_pair(std::cref(tmpl), *attributes);
-            }
-        }
-        return std::nullopt;
-    }
+        void CreateHandle();
+        void DestroyHandle();
+        void AddFailureMode(const FailureMode& mode);
+        std::optional<FailureEvent> ReadOnce();
+    
+    private:
+        std::optional<std::string> ReadNextLine();
+        void ConfigureHandle(DataSourceOption option);
+    
+    private:
+        std::string path_;
+        int64_t startTime_;
+        int64_t endTime_;
 
-    std::optional<std::pair<LogTemplate, std::unordered_map<std::string, std::string>>> LogParser::MatchSingleLineTemplate(const std::string& line) const
-    {
-        for (const LogTemplate& tmpl : singleLineTemplates_) {
-            if (auto attributes = tmpl.Match(line)) {
-                return std::make_pair(std::cref(tmpl), *attributes);
-            }
-        }
-        return std::nullopt;
-    }
+        FILE* handle_;
+        std::function<FILE* (const std::string&)> opener_;
+        std::function<void(FILE*)> closer_;
+
+        std::optional<std::string> cachedLine_;
+        std::unique_ptr<LogParser> parser_;
+    };
 }

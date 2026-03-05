@@ -12,7 +12,9 @@ using namespace database;
 RackResult NodeLocalCollectorModule::Initialize()
 {
     collector = std::make_shared<NodeCollector>();
+#ifdef ENABLE_DAEMON_FEATURE
     collector->InitDb(UbseContext::GetInstance().GetModule<DatabaseModule>()->GetDatabase());
+#endif
     return RACK_OK;
 }
 void NodeLocalCollectorModule::UnInitialize()
@@ -21,8 +23,10 @@ void NodeLocalCollectorModule::UnInitialize()
 }
 RackResult NodeLocalCollectorModule::Start()
 {
+#ifdef ENABLE_DAEMON_FEATURE
     collector->StartDb();
     LOG_INFO << "NodeLocalCollectorModule Start Success";
+#endif
     return RACK_OK;
 }
 void NodeLocalCollectorModule::Stop()
@@ -34,7 +38,7 @@ RackResult NodeLocalCollectorModule::InsertDeviceData(vector<std::shared_ptr<top
     RackResult ret = collector->InsertDeviceData(nodes);
     return ret;
 }
-RackResult NodeLocalCollectorModule::InsertUbCData(vector<std::shared_ptr<topology::node::UbControllers>> &ubcs)
+RackResult NodeLocalCollectorModule::InsertUbCData(vector<std::shared_ptr<topology::node::UbController>> &ubcs)
 {
     RackResult ret = collector->InsertUbCData(ubcs);
     return ret;

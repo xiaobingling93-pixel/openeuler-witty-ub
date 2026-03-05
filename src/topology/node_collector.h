@@ -23,9 +23,9 @@ public:
     OP_RET QueryHisNodeData(vector<std::shared_ptr<topology::node::Node>> &nodes);
     OP_RET QueryHisUbCData(vector<std::shared_ptr<topology::node::UbController>> &ubcs);
     OP_RET QueryHisPortData(vector<std::shared_ptr<topology::node::Port>> &ports);
-    OP_RET QueryCurDeviceData(vector<std::share_ptr<topology::node::Node>> &nodes);
+    OP_RET QueryCurDeviceData(vector<std::shared_ptr<topology::node::Node>> &nodes);
     OP_RET QueryCurUbCData(vector<std::shared_ptr<topology::node::UbController> &ubcs);
-    OP_RET QuertCurPortData(vector<std::shared_ptr<topology::node::Port>> &ports);
+    OP_RET QueryCurPortData(vector<std::shared_ptr<topology::node::Port>> &ports);
 
 private:
     unordered_map<uint32_t, Node> deviceInfos; // deviceId, device

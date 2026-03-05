@@ -6,7 +6,7 @@
 #include "utils.h"
 
 namespace failure::log {
-    LogTemplate(const FailureMode& mode)
+    LogTemplate::LogTemplate(const FailureMode& mode)
         : mode_(mode)
     {
         CreateRegexCaptor(mode.manifest);
@@ -110,7 +110,7 @@ namespace failure::log {
                 LOG_ERROR << "the size of fields to be matched (" << fields_.size() << ") does not match the number of captured ones (" << match.size() - 1 << ")";
                 return std::nullopt;
             }
-            for (size_t i = 0; i < match.size(); ++i) {
+            for (size_t i = 1; i < match.size(); ++i) {
                 res[fields_[i - 1]] = match.str(i);
             }
             return res;

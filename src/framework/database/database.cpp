@@ -52,10 +52,10 @@ int Database::CreateTableOp(sqlite3 *db, string tableName, vector<tuple<string, 
                             vector<string> primaryKeys)
 {
     char *errMsg;
-    string sql = "CREATE TABLE IS NOT EXISTS " + tableName + "(";
+    string sql = "CREATE TABLE IF NOT EXISTS " + tableName + " (";
     for (int i = 0; i < params.size(); i++) {
         sql += get<IND_ZERO>(params[i]) + " " + get<IND_ONE>(params[i]) +
-            (get<IND_TWO>(params[i]) ? "NOT NULL" : "DEFAULT NULL");
+            (get<IND_TWO>(params[i]) ? " NOT NULL" : " DEFAULT NULL");
 
         if (i != params.size() - 1) {
             sql += ", ";
@@ -155,7 +155,7 @@ OP_RET Database::QueryCurrData(string tableName, unordered_map<string, pair<COMP
     }
     sql += ";";
     cout << sql << endl;
-    char * errMsg;
+    char *errMsg;
     int rc = sqlite3_exec(currDb, sql.c_str(), QueryDataCallback, (void *)res, &errMsg);
     if (rc != SQLITE_OK) {
         cout << "query data error: " << errMsg << endl;
@@ -180,7 +180,7 @@ OP_RET Database::QueryHisData(string tableName, unordered_map<string, pair<COMP_
         }
         sql += queryData[i].first + string(queryData[i].second.first);
         if (KeyIsText(tableName, queryData[i].first)) {
-            sql += ("'" + queryData[i].second.second);
+            sql += ("'" + queryData[i].second.second + "'");
         } else {
             sql += queryData[i].second.second;
         }
@@ -223,7 +223,7 @@ int Database::UpdateDataOp(sqlite3 *db, string tableName, unordered_map<string, 
             sql += " AND ";
         }
         if (KeyIsText(tableName, it->first)) {
-            sql += it->first + string(it->second.first) + "'" + it->second->second + "'";
+            sql += it->first + string(it->second.first) + "'" + it->second.second + "'";
         } else {
             sql += (it->first + string(it->second.first) + it->second.second);
         }
@@ -268,8 +268,8 @@ OP_RET Database::UpdateData(string tableName, unordered_map<string, pair<COMP_SY
                 return OP_RET::FAIL;
             }
         }
-        return OP_RET::SUCCESS;
     }
+    return OP_RET::SUCCESS;
 }
 
 int Database::InsertDataOp(sqlite3 *db, string tableName, unordered_map<string, string> data)
@@ -369,7 +369,7 @@ int Database::DeleteDataOp(sqlite3 *db, string tableName, unordered_map<string, 
     }
     cout << sql << endl;
     char *errMsg;
-    int rc = sqlite3_exec(db, sql.ctr(), NULL, NULL, &errMsg);
+    int rc = sqlite3_exec(db, sql.c_str(), NULL, NULL, &errMsg);
     if (rc != SQLITE_OK) {
         cout << "delete data error: " << errMsg << endl;
         sqlite3_free(errMsg);

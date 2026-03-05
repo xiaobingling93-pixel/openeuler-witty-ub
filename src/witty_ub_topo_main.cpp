@@ -15,7 +15,7 @@ using namespace topology::node;
 using namespace lcne::module;
 using namespace urma::module;
 using namespace witty_json::module;
-UbseContext& g_rackContext = UbseContext::GetInstance();
+UbseContext &g_rackContext = UbseContext::GetInstance();
 void RegisterModules()
 {
     g_rackContext.RegisterModule<LcneModule>();
@@ -35,8 +35,8 @@ void InitDependencies()
 void CreateModules()
 {
     std::vector<std::type_index> sortedModules = g_rackContext.GetSortedModules();
-    for (auto type: sortedModules) {
-        LOG_INFO << "UbseContext::CreateModules: Create module " << type.name();
+    for (auto type : sortedModules) {
+        LOG_INFO << "UbseContext::CreateModules: Creating module " << type.name();
         if (type == typeid(DatabaseModule)) {
             g_rackContext.InitModule<DatabaseModule>(RackModule::CreateModule<DatabaseModule>());
         } else if (type == typeid(NodeLocalCollectorModule)) {
@@ -47,8 +47,7 @@ void CreateModules()
             g_rackContext.InitModule<URMAModule>(RackModule::CreateModule<URMAModule>());
         } else if (type == typeid(JSONModule)) {
             g_rackContext.InitModule<JSONModule>(RackModule::CreateModule<JSONModule>());
-        }
-        else {
+        } else {
             LOG_ERROR << "CreateModule-Error: module " << type.name() << " not defined";
         }
     }

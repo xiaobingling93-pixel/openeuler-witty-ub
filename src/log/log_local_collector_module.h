@@ -21,5 +21,5 @@ namespace failure::log {
 
     private:
         std::shared_ptr<LogCollector> collector_;
-    }
+    };
 }

@@ -12,7 +12,7 @@ RackResult DatabaseModule::Initialize()
     std::cout << "DatabaseModule Initialized" << std::endl;
     return RACK_OK;
 }
-void DatabaseModule::Unitialize()
+void DatabaseModule::UnInitialize()
 {
     return;
 }

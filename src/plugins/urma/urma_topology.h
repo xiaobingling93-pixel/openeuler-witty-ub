@@ -38,9 +38,9 @@ public:
     URMATopology(){
         jsonModule =
             ubse::context::UbseContext::GetInstance().GetModule<witty_json::module::JSONModule>();
-    }
+    };
     URMAResult ParseUMQLog(std::string file_path, std::map<SessionKey, std::string> &activeSessions);
-    URMAResult CreateTopology(ubse::context::TopoToolArgs &args);
+    URMAResult CreateTopology(ubse::context::TopoToolsArgs &args);
 private:
     std::shared_ptr<witty_json::module::JSONModule> jsonModule;
 };

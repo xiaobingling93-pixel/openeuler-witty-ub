@@ -11,21 +11,21 @@
         "version": "all",
         "log_path": "dmesg",
         "is_multiline": true,
-        "manifest":"<datetime> ub_generic_component {<identifier>}: <>"
+        "manifest": "<datetime> ub_generic_component {<identifier>}: <>"
     },
     {
         "component": "ubsocket",
         "version": "all",
         "log_path": "/var/log/messages",
         "is_multiline": false,
-        "manifest": "<datetime>|<alarm_level>|UbSocket|<logtype(UMQ_AE/UMQ_API/UMQ_CQE/UBSocket)>|<function_name>[<line>]|<content>"
+        "manifest": "<datetime>|<alarm_level>|UbSocket|<log_type(UMQ_AE/UMQ_API/UMQ_CQE/UBSocket)>|<function_name>[<line>]|<content>"
     },
     {
         "component": "umq",
         "version": "all",
         "log_path": "/var/log/umdk/umq/",
         "is_multiline": false,
-        "manifest": "<datetime>|<alarm_level>|<program_name>[proc_id]|UMQ<log_type(/[URMA_API]/[URMA_CQE]/[URMA_AE])>[<thread_id>]|<function_name>[<line>]|<content>"
+        "manifest": "<datetime>|<alarm_level>|<program_name>[<proc_id>]|UMQ<log_type(/[URMA_API]/[URMA_CQE]/[URMA_AE])>[<thread_id>]|<function_name>[<line>]|<content>"
     },
     {
         "component": "liburma",
@@ -46,7 +46,7 @@
         "version": "all",
         "log_path": "/var/log/messages",
         "is_multiline": false,
-        "manifest": "<datetime>|<alrarm_level>|UDMA_LOG_TAG|<function_name>[<line>]|<content>"
+        "manifest": "<datetime>|<alarm_level>|UDMA_LOG_TAG|<function_name>[<line>]|<content>"
     },
     {
         "component": "udmacore",
