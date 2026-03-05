@@ -18,34 +18,34 @@ enum class ChipType {
   NPU = 2,
   UNKNOWN = 3,
 };
-enum class DieState { NORMAL = 0, ARNORMAL = 1, UNKNOWN = 2 };
-enum class UbcState {
+enum class DieState { NORMAL = 0, ABNORMAL = 1, UNKNOWN = 2 };
+enum class UbCState {
   INITIAL = 0,
   ONLINE = 1,
   OFFLINE = 2,
-  RESETING = 3,
+  RESETTING = 3,
   ABNORMAL = 4,
   UNKNOWN = 5
 };
 enum class PortState { UP = 0, DOWN = 1, UNKNOWN = 2 };
 
-extern const unordered_map<string, ChipType> strToChipTypeMap;
-extern const unordered_map<ChipType, string> chipTypeToStrMap;
-extern const unordered_map<string, DieState> strToDieStateMap;
-extern const unordered_map<DieState, string> dieStateToStrMap;
-extern const unordered_map<string, UbcState> strToUbcStateMap;
-extern const unordered_map<UbcState, string> ubcStateToStrMap;
-extern const unordered_map<string, PortState> strToPortStateMap;
-extern const unordered_map<PortState, string> portStateToStrMap;
+extern unordered_map<string, ChipType> strToChipTypeMap;
+extern unordered_map<ChipType, string> chipTypeToStrMap;
+extern unordered_map<string, DieState> strToDieStateMap;
+extern unordered_map<DieState, string> dieStateToStrMap;
+extern unordered_map<string, UbCState> strToUbCStateMap;
+extern unordered_map<UbCState, string> ubcStateToStrMap;
+extern unordered_map<string, PortState> strToPortStateMap;
+extern unordered_map<PortState, string> portStateToStrMap;
 vector<string> GetHostIps(string str);
-vector<string> GetPortIps(string str);
+vector<uint32_t> GetPortIds(string str);
 std::string MergeStr(std::vector<std::string> strVec);
 ChipType Str2ChipType(std::string chipType);
 string ChipType2Str(ChipType chipType);
 DieState Str2DieState(std::string dieState);
 string DieState2Str(DieState dieState);
-UbcState Str2UbcState(std::string ubcState);
-string UbcState2Str(UbcState ubcState);
+UbCState Str2UbCState(std::string ubCState);
+string UbcState2Str(UbCState ubcState);
 PortState Str2PortState(std::string portState);
 string PortState2Str(PortState portState);
 template <typename T> string Vector2Str(vector<T> const &values) {
@@ -103,13 +103,13 @@ struct UbController : public ObjFormatter {
   string primaryCna;
   vector<uint32_t> portIds;
   DieState dieState;
-  UbcState ubcState;
+  UbCState ubcState;
 
   UbController() = default;
   UbController(string dieGuid, string ubcEid, uint32_t deviceId,
                uint32_t slotId, uint32_t chipId, uint32_t dieId,
                string primaryCna, vector<uint32_t> portIds, DieState dieState,
-               UbcState ubcState)
+               UbCState ubcState)
       : dieGuid(dieGuid), ubcEid(ubcEid), deviceId(deviceId), slotId(slotId),
         chipId(chipId), dieId(dieId), primaryCna(primaryCna),
         portIds(std::move(portIds)), dieState(dieState), ubcState(ubcState) {}
@@ -127,7 +127,8 @@ struct UbController : public ObjFormatter {
     data_map["dieState"] = DieState2Str(dieState);
     data_map["ubcState"] = UbcState2Str(ubcState);
     return data_map;
-  };
+  }
+};
   inline void to_json(nlohmann::json &j, const UbController &u) {
     j = nlohmann::json{{"primary_cna", u.primaryCna}};
   }
@@ -185,7 +186,6 @@ struct UbController : public ObjFormatter {
     if(p.remoteIouId.has_value())
       j["remote_iou_id"] = p.remoteIouId.value();
   };
-}
 
 void DataMapToObj(unordered_map<string, string> data_map, Node &obj);
 void DataMapToObj(unordered_map<string, string> data_map, UbController &obj);

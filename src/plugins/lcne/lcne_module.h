@@ -16,21 +16,22 @@ namespace lcne::module
     using namespace topology::node;
     using namespace rack::com;
     using namespace witty_json::module;
-    class LcnModule : public RackModule
+    class LcneModule : public RackModule
     {
     public:
-        LcnModule()
+        LcneModule()
         {
-            dependencies.push_back(typeid(JsonModule));
+            dependencies.push_back(typeid(JSONModule));
             dependencies.push_back(typeid(NodeLocalCollectorModule));
         }
-        ~LcnModule() override = default;
+        ~LcneModule() override = default;
         RackResult Initialize() override;
-        void Uninitialize() override;
+        void UnInitialize() override;
         RackResult Start() override;
         void Stop() override;
 
     private:
-        std::shared_ptr<lcne::topology::LcneTopology> lcneTopology;
+        std::shared_ptr<lcne::topo::LcneTopology> lcneTopology;
     };
 }
+#endif

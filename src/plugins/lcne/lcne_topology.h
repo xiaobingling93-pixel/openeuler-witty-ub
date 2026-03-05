@@ -14,15 +14,13 @@ class LcneTopology {
 public:
   LcneTopology() {
     lcneCollector = std::make_shared<lcne::collector::LcneNodeCollector>();
-    nodeLocalCollector =
-        ubse::context::UbseContext::GetInstance()
-            ->GetModule<topology::node::NodeLocalCollectorModule>();
-    jsonModule = ubse::context::UbseContext::GetInstance()
-                     ->GetModule<witty_json::module::JsonModule>();
+    nodeLocalCollectorModule =
+        ubse::context::UbseContext::GetInstance().GetModule<topology::node::NodeLocalCollectorModule>();
+    jsonModule = ubse::context::UbseContext::GetInstance().GetModule<witty_json::module::JSONModule>();
   }
   LcneResult SubTopolgyChanges();
   LcneResult CreateTopolgy();
-  LcneResult GetHistoryTopolgy(
+  LcneResult GetHisTopolgy(
       std::vector<std::shared_ptr<topology::node::Node>> &nodes,
       std::vector<std::shared_ptr<topology::node::UbController>> &ubcs,
       std::vector<std::shared_ptr<topology::node::Port>> &ports);
@@ -32,21 +30,22 @@ public:
       std::vector<std::shared_ptr<topology::node::Port>> &ports);
   LcneResult RegLinkNotifyHttpHandler();
   rack::com::RackComResult<rack::com::RackHttpResponse>
-  LinkNotifyHandlerFunc(rack::com::RackComContext &ctx,
+  LinkNotifyHandlerFunc(const rack::com::RackComContext &ctx,
                         const rack::com::RackHttpRequest &req);
   rack::com::RackComResult<rack::com::RackHttpResponse>
-  GetLcneTopologyInitHandlerFunc(rack::com::RackComContext &ctx,
+  GetLcneTopologyInitHandlerFunc(const rack::com::RackComContext &ctx,
                                  const rack::com::RackHttpRequest &req);
 
   rack::com::RackComResult<rack::com::RackHttpResponse>
-  GetLcneTopologyHandlerFunc(rack::com::RackComContext &ctx,
+  GetLcneTopologyHandlerFunc(const rack::com::RackComContext &ctx,
                              const rack::com::RackHttpRequest &req);
 
 private:
   std::shared_ptr<lcne::collector::LcneNodeCollector> lcneCollector;
   std::shared_ptr<topology::node::NodeLocalCollectorModule>
-      NodeLocalCollectorModule;
-  std::shared_ptr<witty_json::module::JsonModule> jsonModule;
+      nodeLocalCollectorModule;
+  std::shared_ptr<witty_json::module::JSONModule> jsonModule;
 };
 
 } // namespace lcne::topo
+#endif

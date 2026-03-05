@@ -9,8 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace lcne::topo
-{
+namespace lcne::topo{
   template <typename T>
   std::vector<T>
   convertPtrVectorToValueVector(const std::vector<std::shared_ptr<T>> &ptrVec)
@@ -44,7 +43,7 @@ namespace lcne::topo
         convertPtrVectorToValueVector(ports);
     auto ubcs_pair = jsonModule->GetJsonPair("iodie", ubcs_vec);
     auto port_pair = jsonModule->GetJsonPair("port", ports_vec);
-    auto json_ret = jsonModule->WriteVectorsTofile(lcne::common::JSON_OUTPUT_FILE,
+    auto json_ret = jsonModule->WriteVectorsToFile(lcne::common::JSON_OUTPUT_FILE,
                                                    ubcs_pair, port_pair);
     if (json_ret == RACK_FAIL)
     {
@@ -143,13 +142,13 @@ namespace lcne::topo
     rack::com::RackHttpHandler linkNotifyHandlerFunc =
         std::bind(&LcneTopology::LinkNotifyHandlerFunc, this,
                   std::placeholders::_1, std::placeholders::_2);
-    rack::com::RackHttpServerHandler::GetInstance()->Register(
+    rack::com::RackHttpServerHandler::GetInstance().Register(
         rack::com::RackHttpMethod::POST, lcne::common::LCNE_NOTIFY_TOPO_PATH,
         linkNotifyHandlerFunc);
     return LCNE_SUCCESS;
   }
   rack::com::RackComResult<rack::com::RackHttpResponse>
-  LcneTopology::LinkNotifyHandlerFunc(rack::com::RackComContext &ctx,
+  LcneTopology::LinkNotifyHandlerFunc(const rack::com::RackComContext &ctx,
                                       const rack::com::RackHttpRequest &req)
   {
     LOG_INFO << "LcneTopology::LinkNotifyHandlerFunc-Info: received link notify";
@@ -165,7 +164,7 @@ namespace lcne::topo
         std::move(resp));
   }
   rack::com::RackComResult<rack::com::RackHttpResponse>
-  GetLcneTopologyInitHandlerFunc(rack::com::RackComContext &ctx,
+  LcneTopology::GetLcneTopologyInitHandlerFunc(const rack::com::RackComContext &ctx,
                                  const rack::com::RackHttpRequest &req)
   {
     LOG_INFO << "LcneTopology::GetLcneTopologyInitHandlerFunc-Info: received "
@@ -179,7 +178,7 @@ namespace lcne::topo
                    "to create "
                    "topology";
       resp.status = 404;
-      return rack::com::RackComResult<rack::com::RackHttpResponse>::Error(
+      return rack::com::RackComResult<rack::com::RackHttpResponse>::Ok(
           std::move(resp));
     }
     std::vector<std::shared_ptr<topology::node::Node>> cur_nodes;
@@ -195,7 +194,7 @@ namespace lcne::topo
                    "to get his node "
                    "topology";
       resp.status = 404;
-      return rack::com::RackComResult<rack::com::RackHttpResponse>::Error(
+      return rack::com::RackComResult<rack::com::RackHttpResponse>::Ok(
           std::move(resp));
     }
     resp.status = 200;
@@ -204,7 +203,7 @@ namespace lcne::topo
   }
 
   rack::com::RackComResult<rack::com::RackHttpResponse>
-  GetLcneTopologyHandlerFunc(rack::com::RackComContext &ctx,
+  LcneTopology::GetLcneTopologyHandlerFunc(const rack::com::RackComContext &ctx,
                              const rack::com::RackHttpRequest &req)
   {
     rack::com::RackHttpResponse resp;

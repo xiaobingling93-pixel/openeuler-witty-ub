@@ -11,7 +11,7 @@ class RackModule {
 public:
   virtual ~RackModule() = default;
   virtual RackResult Initialize() = 0;
-  virtual void Uninitialize() = 0;
+  virtual void UnInitialize() = 0;
   virtual RackResult Start() = 0;
   virtual void Stop() = 0;
   virtual void RegArgs() {};
@@ -19,7 +19,7 @@ public:
   template <typename T> static std::shared_ptr<RackModule> CreateModule() {
     return std::make_shared<T>();
   }
-  std::vector<std::type_index> GetDepencies() { return dependencies; }
+  std::vector<std::type_index> GetDependencies() { return dependencies; }
 
 protected:
   std::vector<std::type_index> dependencies;

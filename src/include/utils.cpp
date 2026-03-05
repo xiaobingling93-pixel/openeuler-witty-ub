@@ -27,11 +27,11 @@ namespace utils {
     std::optional<int64_t> DatetimeStrToTimestamp(const std::string &datetimeStr) {
         std::tm t = { 0 };
         const char* res = nullptr;
-        res = std::strptime(datetimeStr.c_str(), "[%a %b-%d %H:%M:%S %Y", &t);
+        res = strptime(datetimeStr.c_str(), "[%a %b-%d %H:%M:%S %Y", &t);
         if (res && *res == '\0') {
             return std::mktime(&t);
         }
-        res = std::strptime(datetimeStr.c_str(), "[%a %b-%d %H:%M:%S %Y", &t);
+        res = strptime(datetimeStr.c_str(), "[%a %b-%d %H:%M:%S %Y", &t);
         if(res){
             if (*res == '.') {
                 res++;
@@ -39,7 +39,7 @@ namespace utils {
                     res++;
                 }
             }
-            const char* tz = std::strptime(res, "%z", &t);
+            const char* tz = strptime(res, "%z", &t);
             if(tz){
                 return timegm(&t);
             }

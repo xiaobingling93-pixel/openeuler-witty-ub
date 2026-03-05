@@ -6,21 +6,21 @@
 #include "rack_error.h"
 namespace witty_json::io {
     using json = nlohmann::json;
-    Class WITTY_JSON_H{
+    class WittyJson{
         public:
         void add_vector_to_json(json &j){
         }
         template<typename T, typename...Rest>
         void add_vector_to_json(json &j, std::pair<const char *, const std::vector<T> &> &first, Rest &&...rest){
-            j[v.first] = v.second;
+            j[first.first] = first.second;
             add_vector_to_json(j, std::forward<Rest>(rest)...);
         }
         template<typename...Pairs>
-        RackResult WriteVectorsTofile(const std::string &filename, Pairs &&...pairs){
+        RackResult WriteVectorsToFile(const std::string &filename, Pairs &&...pairs){
             json j;
             add_vector_to_json(j, std::forward<Pairs>(pairs)...);
             std::ofstream input(filename);
-            if(!file.is_open()){
+            if(!input.is_open()){
                 LOG_ERROR << "WittyJson::WriteVectorsTofile-Error: failed to open file " << filename;
                 return RACK_FAIL;
             }
