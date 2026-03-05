@@ -14,3 +14,4 @@ RackResult JsonModule::Initialize() {
 void JsonModule::Uninitialize() { return; }
 RackResult JsonModule::Start() { return RACK_OK; }
 void JsonModule::Stop() { return; }
+} // namespace witty_json::module
