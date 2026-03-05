@@ -3,7 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <nlohmann/json.hpp>
+#include <sstream>
 
 namespace failure {
     enum class DataSourceOption{
@@ -29,7 +29,7 @@ namespace failure {
         bool isMultiline;
         std::string manifest;
 
-        static FailureMode FromJson(const nlohmann::json& j);
+        static FailureMode FromJson(const std::string& jsonStr);
     };
 
     struct FailureEvent{
@@ -39,7 +39,7 @@ namespace failure {
         std::string text;
         std::unordered_map<std::string, std::string> attributes;
 
-        nlohmann::json ToJson() const;
+        std::string ToJson() const;
     };
     struct FailureEventQuery{
         int64_t startTime;
