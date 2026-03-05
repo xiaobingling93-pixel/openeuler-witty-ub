@@ -55,9 +55,9 @@ URMAResult URMATopology::ParseUMQLog(std::string file_path, std::map<SessionKey,
             continue;
         LOG_DEBUG << "line is: " << line;
         bool isBind = (line.find("bind jetty success") != std::string::npos);
-        bool usUnBind = (line.find("unbind jetty") != std::string::npos);
+        bool isUnbind = (line.find("unbind jetty") != std::string::npos);
         // 第一步：如果不包含任何关键词，直接跳过，不进行正则匹配
-        if (!isBind && !isUnBind) {
+        if (!isBind && !isUnbind) {
             LOG_DEBUG << "line donnot contains bind network success or unbind network";
             continue;
         }
@@ -67,17 +67,17 @@ URMAResult URMATopology::ParseUMQLog(std::string file_path, std::map<SessionKey,
             // 格式不匹配或无参数，跳过
             LOG_DEBUG << "line: " << lineNum << " log format is incorrect, "
                       << " key: " << (isBind ? "bind network success" : "unbind network") << " is found, "
-                      << "but cannot get [local eid, local jetty_id, remote_eid, remote jetty_id]";
+                      << "but cannot get [local eid, local jetty_id, remote eid, remote jetty_id]";
             LOG_ERROR << "This log line: " << line << " cannot be analyzed, data cannot be correctly matched.";
             return URMA_FAIL;
         }
 
-        if(isBind) {
+        if (isBind) {
             // 情况 1: Bind 
-            // 如果 Map 中已存在相同的 key （异常情况，比如重复bind未bind），则覆盖为最新状态
+            // 如果 Map 中已存在相同的 key （异常情况，比如重复bind未unbind），则覆盖更新为最新状态
             // 这符合“顺序”逻辑：最新的 bind 生效
             activeSessions[key] = line;
-            LOG_DEBUG << "line: " << lineNum << "is unbind jetty -> delete bind data: " << key.toString();
+            LOG_DEBUG << "line: " << lineNum << " is bind jetty success -> insert/update data: " << key.toString();
         } else if (isUnbind) {
             // 情况 2: Unbind
             auto it = activeSessions.find(key);
@@ -86,7 +86,7 @@ URMAResult URMATopology::ParseUMQLog(std::string file_path, std::map<SessionKey,
                 activeSessions.erase(it);
                 LOG_DEBUG << "line: " << lineNum << "is unbind jetty -> delete bind data: " << key.toString();
             } else {
-                // 没找到记录（可能是日志缺失了前面的 bind，或者重复 unbind）
+                // 没找到记录（可能是日志缺失了前面的 bind，或者是重复 unbind）
                 LOG_DEBUG << "line: " << lineNum
                           << " No corresponding Bind record is found (the record may have been deleted or the log is "
                              "incomplete)."
@@ -100,7 +100,7 @@ URMAResult URMATopology::ParseUMQLog(std::string file_path, std::map<SessionKey,
     return URMA_SUCCESS;
 }
 
-URMAResult URMATopology::CreateTopology(TopoToolArgs &args)
+URMAResult URMATopology::CreateTopology(TopoToolsArgs &args)
 {
     std::vector<topology::urma::Pod> pods;
     std::vector<topology::urma::Jetty> jetties;
@@ -122,7 +122,7 @@ URMAResult URMATopology::CreateTopology(TopoToolArgs &args)
             }
         }
         for (auto [pod_id, path] : target_log_path) {
-            //获取这个pod对应的日志文件中的所有符合格式的参数存在sessionKey中
+            //获取这个pod对应的日志文件中的所有符合格式日志的参数存在sessionKey中
             std::map<SessionKey, std::string> activeSessions;
             URMAResult ret = ParseUMQLog(path, activeSessions);
             if (ret != URMA_SUCCESS) {
@@ -132,7 +132,7 @@ URMAResult URMATopology::CreateTopology(TopoToolArgs &args)
             pods.emplace_back(pod_id);
             for (const auto pair : activeSessions) {
                 auto key = pair.first;
-                jetties.emplace_back(key.local_jetty_id, key.local_eid, key.remote_jetty_id, key.remote_eid, key.remote_eid, pod_id);
+                jetties.emplace_back(key.local_jetty_id, key.local_eid, key.remote_jetty_id, key.remote_eid, pod_id);
                 urma_devices.emplace_back(key.local_eid);
             }
         }
@@ -146,7 +146,7 @@ URMAResult URMATopology::CreateTopology(TopoToolArgs &args)
 
     } else if (args.pod_mode == "off") {
         auto it = input_umq_log_path.find("normal");
-        if (it = input_umq_log_path.end()) {
+        if (it == input_umq_log_path.end()) {
             LOG_ERROR << "Failed to find umq log path when pod mode is off";
             return URMA_FAIL;
         }
@@ -162,8 +162,8 @@ URMAResult URMATopology::CreateTopology(TopoToolArgs &args)
             urma_devices.emplace_back(key.local_eid);
         }
         auto jetty_pair = jsonModule->GetJsonPair("jetty", jetties);
-        auto urma_device_pair = josnModule->GetJsonPair("urma_device", urma_devices);
-        auto json_ret = jsonModule->WriteVetcorsToFile(URMA_JSON_PATH, jetty_pair, urma_device_pair);
+        auto urma_device_pair = jsonModule->GetJsonPair("urma_device", urma_devices);
+        auto json_ret = jsonModule->WriteVectorsToFile(URMA_JSON_PATH, jetty_pair, urma_device_pair);
         if (json_ret == RACK_FAIL) {
             LOG_ERROR << "Failed to writer to file " << URMA_JSON_PATH;
             return URMA_FAIL;

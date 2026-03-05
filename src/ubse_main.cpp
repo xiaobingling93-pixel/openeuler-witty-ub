@@ -84,7 +84,7 @@ void CreateModules()
 void UnInitializeAndStopModules()
 {
     std::unordered_map<std::type_index, std::shared_ptr<RackModule>> moduleMap = g_rackContext.GetModuleMap();
-    std::vector<std::type_index> sortedModules = g_rackContext.GetSortedModule();
+    std::vector<std::type_index> sortedModules = g_rackContext.GetSortedModules();
     for (int i = sortedModules.size() - 1; i >= 0; i--) {
         auto type = sortedModules[i];
         if (moduleMap.find(type) != moduleMap.end()) {

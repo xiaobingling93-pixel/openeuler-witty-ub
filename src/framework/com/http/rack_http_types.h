@@ -16,6 +16,7 @@ enum StatusCode {
     Created_201 = 201,
     PreconditionFailed_412 = 412,
     NotFound_404 = 404,
+    InternalServerError_500 = 500,
 };
 enum class RackHttpMethod { GET, POST, PUT, DELETE_, PATCH, OPTIONS, INVALID };
 

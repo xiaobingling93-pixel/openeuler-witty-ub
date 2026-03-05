@@ -7,14 +7,17 @@
 #include "rack_module.h"
 #include "database_module.h"
 #include "node_collector.h"
-#inlcude "node_data_def.h"
+#include "node_data_def.h"
 
 namespace topology::node {
 using namespace rack::module;
 using namespace database;
 class NodeLocalCollectorModule : public RackModule {
 public:
-    NodeLocalCollectorModule() { dependencies.push_back(typeid(DatabaseModule)); }
+    NodeLocalCollectorModule()
+    {
+        // dependencies.push_back(typeid(DatabaseModule)); 
+    }
     ~NodeLocalCollectorModule() override = default;
     RackResult Initialize() override;
     void UnInitialize() override;

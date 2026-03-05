@@ -37,7 +37,7 @@ RackComResult<RackHttpResponse> RackHttpClient::Do(const RackComContext &context
                 content_type = it->second;
             }
 
-            res = cli.PUT(request.path, headers, request.body, content_type);
+            res = cli.Put(request.path, headers, request.body, content_type);
             break;
         }
         case RackHttpMethod::DELETE_:
@@ -63,7 +63,7 @@ RackComResult<RackHttpResponse> RackHttpClient::Do(const RackComContext &context
     for (const auto &[k, v] : resp.headers) {
         out.headers[k] = v;
     }
-    
+
     return RackComResult<RackHttpResponse>::Ok(std::move(out));
 }
 } // namespace rack::com

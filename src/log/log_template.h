@@ -22,6 +22,6 @@ namespace failure::log {
     private:
         FailureMode mode_;
         std::regex pattern_;
-        std::vector<std::string> fields;
-    }
+        std::vector<std::string> fields_;
+    };
 }

@@ -11,9 +11,9 @@ using namespace rack::module;
 using namespace std;
 class DatabaseModule : public RackModule {
 public:
-    ~DatabaseModile() override = default;
+    ~DatabaseModule() override = default;
     RackResult Initialize() override;
-    void Unitialize() override;
+    void UnInitialize() override;
     RackResult Start() override;
     void Stop() override;
     DatabaseModule() = default;

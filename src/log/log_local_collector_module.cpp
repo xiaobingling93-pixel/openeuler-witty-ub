@@ -17,7 +17,7 @@ namespace failure::log {
             LOG_ERROR << "failed to initialize LogLocalCollectorModule";
             return res;
         }
-        LOG_DEBUG << "LogLocalCollectorModule initialize";
+        LOG_DEBUG << "LogLocalCollectorModule initialized";
         return res;
     }
 

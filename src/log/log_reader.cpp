@@ -47,13 +47,13 @@ namespace failure::log {
 
     std::optional<FailureEvent> LogReader::ReadOnce()
     {
-        while(true) {
+        while (true) {
             auto line = ReadNextLine();
             if (!line) {
                 return std::nullopt;
             }
 
-            if(auto entry = parser_->MatchSingleLineTemplate(*line)) {
+            if (auto entry = parser_->MatchSingleLineTemplate(*line)) {
                 LogTemplate& tmpl = entry->first;
                 std::unordered_map<std::string, std::string>& attributes = entry->second;
                 if (auto event = tmpl.CreateEvent(attributes, *line)) {
@@ -76,7 +76,7 @@ namespace failure::log {
                         lines += *nextLine;
                         continue;
                     }
-                    cachedLine_ = std::move(nexrLine);
+                    cachedLine_ = std::move(nextLine);
                     break;
                 }
                 attributes.erase(it);
@@ -126,7 +126,7 @@ namespace failure::log {
 })";
                 std::string cmd = p + " -T | gawk -v s=" + std::to_string(startTime_) + " -v e=" + std::to_string(endTime_) + " '" + awkScript + "'";
                 return popen(cmd.c_str(), "r");
-                }
+                };
             closer_ = [](FILE* f) {
                 pclose(f);
                 };
@@ -140,7 +140,7 @@ namespace failure::log {
                 };
             closer_ = [](FILE* f) {
                 pclose(f);
-                }
+                };
         }
     }
 }

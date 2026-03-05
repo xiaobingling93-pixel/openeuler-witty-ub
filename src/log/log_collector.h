@@ -13,8 +13,8 @@
 
 namespace failure::log {
     class LogCollector final {
-    pulic:
-        RackResult Initilize();
+    public:
+        RackResult Initialize();
         void UnInitialize();
         RackResult Start();
         void Stop();
@@ -41,7 +41,7 @@ namespace failure::log {
         std::mutex mutex_;
 
         std::vector<std::shared_ptr<LogReader>> readers_;
-        srd::vector<FailureEvent> events_;
+        std::vector<FailureEvent> events_;
 
 #ifndef TOOL_MODE
         std::chrono::milliseconds interval_{ 1000 };

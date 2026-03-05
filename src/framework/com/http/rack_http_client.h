@@ -12,7 +12,7 @@ namespace rack::com {
             const RackComContext& context,
             const RackHttpRequest& request
         ) override;
-    
+
     private:
         std::string baseUrl_;
     };

@@ -26,7 +26,7 @@ RackResult URMAModule::Start()
         return RACK_FAIL;
     }
     LOG_DEBUG << "Execute URMAModule Success";
-    retur RACK_OK;
+    return RACK_OK;
 }
 void URMAModule::UnInitialize()
 {
