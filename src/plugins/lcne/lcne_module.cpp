@@ -9,40 +9,40 @@ namespace lcne::module
 {
     using namespace ubse::context;
     using namespace topology::node;
-    RackResult LcnModule::Initialize()
+    RackResult LcneModule::Initialize()
     {
         lcneTopology = std::make_shared<lcne::topo::LcneTopology>();
         return RACK_OK;
     }
-    RackResult LcnModule::Start()
+    RackResult LcneModule::Start()
     {
 #ifdef ENABLE_DAEMON_FEATURE
         if (auto notifyRet = lcneTopoligy->SubTopolgyChanges() != LCNE_SUCCESS)
         {
-            LOG_ERROR << "LcnModule::Start-Error: failed to subscribe topology changes";
+            LOG_ERROR << "LcneModule::Start-Error: failed to subscribe topology changes";
             return RACK_FAIL;
         }
 #endif
-        if (auto topoRet = lcneTopoligy->CreateTopolgy() != LCNE_SUCCESS)
+        if (auto topoRet = lcneTopology->CreateTopolgy() != LCNE_SUCCESS)
         {
-            LOG_ERROR << "LcnModule::Start-Error: failed to create topology";
+            LOG_ERROR << "LcneModule::Start-Error: failed to create topology";
             return RACK_FAIL;
         }
 #ifdef ENABLE_DAEMON_FEATURE
-        if (auto regRet = lcneTopoligy->RegLinkNotifyHttpHandler() != LCNE_SUCCESS)
+        if (auto regRet = lcneTopology->RegLinkNotifyHttpHandler() != LCNE_SUCCESS)
         {
-            LOG_ERROR << "LcnModule::Start-Error: failed to start topology";
+            LOG_ERROR << "LcneModule::Start-Error: failed to start topology";
             return RACK_FAIL;
         }
 // todo register handler for master
 #endif
         return RACK_OK;
     }
-    void LcnModule::Uninitialize()
+    void LcneModule::UnInitialize()
     {
         return;
     }
-    void LcnModule::Stop()
+    void LcneModule::Stop()
     {
         return;
     }

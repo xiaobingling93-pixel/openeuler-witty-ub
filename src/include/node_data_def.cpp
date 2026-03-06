@@ -25,11 +25,11 @@ unordered_map<DieState, string> dieStateToStrMap = {
     {DieState::UNKNOWN, "UNKNOWN"}};
 unordered_map<string, UbCState> strToUbCStateMap = {
     {"INITIAL", UbCState::INITIAL},   {"ONLINE", UbCState::ONLINE},
-    {"OFFLINE", UbCState::OFFLINE},   {"RESETING", UbCState::RESETING},
+    {"OFFLINE", UbCState::OFFLINE},   {"RESETTING", UbCState::RESETTING},
     {"ABNORMAL", UbCState::ABNORMAL}, {"UNKNOWN", UbCState::UNKNOWN}};
 unordered_map<UbCState, string> ubCStateToStrMap = {
     {UbCState::INITIAL, "INITIAL"},   {UbCState::ONLINE, "ONLINE"},
-    {UbCState::OFFLINE, "OFFLINE"},   {UbCState::RESETING, "RESETING"},
+    {UbCState::OFFLINE, "OFFLINE"},   {UbCState::RESETTING, "RESETTING"},
     {UbCState::ABNORMAL, "ABNORMAL"}, {UbCState::UNKNOWN, "UNKNOWN"}};
 unordered_map<string, PortState> strToPortStateMap = {
     {"UP", PortState::UP},
@@ -99,8 +99,8 @@ UbCState Str2UbCState(string ubCState){
     return strToUbCStateMap[ubCState];
 }
 
-string UbCState2Str(UbCState ubCState){
-    return ubCStateToStrMap[ubCState];
+string UbcState2Str(UbCState ubcState){
+    return ubCStateToStrMap[ubcState];
 }
 
 PortState Str2PortState(string portState){
@@ -114,37 +114,37 @@ string PortState2Str(PortState portState){
     return portStateToStrMap[portState];
 }
 
-void DataMapToObj(unordered_map<string, string>& map, Node& obj){
+void DataMapToObj(unordered_map<string, string> map, Node& obj){
     obj.deviceId = static_cast<uint32_t>(stoi(map["deviceId"]));
     obj.slotId = static_cast<uint32_t>(stoi(map["slotId"]));
-    obj.hostIp = map["host_ip"];
+    obj.hostname = map["hostname"];
     obj.ipAddrs = GetHostIps(map["ipAddrs"]);
     obj.chipNum = static_cast<uint32_t>(stoi(map["chipNum"]));
     obj.dieNum = static_cast<uint32_t>(stoi(map["dieNum"]));
     obj.chipType = Str2ChipType(map["chipType"]);
 }
 
-void DataMapToObj(unordered_map<string, string>& map, UbController& obj){
+void DataMapToObj(unordered_map<string, string> map, UbController& obj){
     obj.dieGuid = map["dieGuid"];
     obj.ubcEid = map["ubcEid"];
     obj.deviceId = static_cast<uint32_t>(stoi(map["deviceId"]));
     obj.slotId = static_cast<uint32_t>(stoi(map["slotId"]));
     obj.chipId = static_cast<uint32_t>(stoi(map["chipId"]));
     obj.dieId = static_cast<uint32_t>(stoi(map["dieId"]));
-    obj.primary_cna = map["primaryCna"];
-    obj.podIds = GetPodIds(map["podIds"]);
+    obj.primaryCna = map["primaryCna"];
+    obj.portIds = GetPortIds(map["portIds"]);
     obj.dieState = Str2DieState(map["dieState"]);
     obj.ubcState = Str2UbCState(map["ubcState"]);
 }
 
-void DataMapToObj(unordered_map<string, string>& map, Port& obj){
+void DataMapToObj(unordered_map<string, string> map, Port& obj){
     obj.portId = static_cast<uint32_t>(stoi(map["portId"]));
     obj.portCna = map["portCna"];
     obj.primaryCna = map["primaryCna"];
     obj.deviceId = static_cast<uint32_t>(stoi(map["deviceId"]));
     obj.portState = Str2PortState(map["portState"]);
     //todo 这里解析暂时没有调用到，会有问题
-    obj.remotePortIds = static_cast<uint32_t>(stoi(map["remotePortIds"]));
+    obj.remotePortId = static_cast<uint32_t>(stoi(map["remotePortIds"]));
     obj.remoteDeviceId = static_cast<uint32_t>(stoi(map["remoteDeviceId"]));
     obj.remoteSlotId = static_cast<uint32_t>(stoi(map["remoteSlotId"]));
     obj.remoteUbpuId = static_cast<uint32_t>(stoi(map["remoteUbpuId"]));

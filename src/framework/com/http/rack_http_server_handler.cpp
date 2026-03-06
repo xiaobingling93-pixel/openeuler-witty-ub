@@ -37,7 +37,7 @@ void RackHttpServerHandler::Use(RackHttpMiddleware middleware)
     middlewares_.push_back(std::move(middleware));
 }
 
-RackComResult<RackHttpResponse> RackHttpServerHandler::DisPatch(const RackComContext &context,
+RackComResult<RackHttpResponse> RackHttpServerHandler::Dispatch(const RackComContext &context,
     const RackHttpRequest &request) const
 {
     if (context.cancelled && context.cancelled->load(std::memory_order_relaxed)) {

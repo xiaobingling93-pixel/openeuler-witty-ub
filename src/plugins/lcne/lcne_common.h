@@ -9,22 +9,20 @@
 #include <string>
 #include <tinyxml2.h>
 
-#endif
-
 namespace lcne::common
 {
   using namespace topology::node;
-  constexpr const char *LCNE_PORT = "LCNE";
+  constexpr const char *LCNE_PORT = "34256";
   constexpr const char *LCNE_URL = "http://127.0.0.1";
   constexpr const char *LCNE_LOCAL_IP = "127.0.0.1";
   constexpr const char *LCNE_CONTENT_TYPE = "application/yang-data+xml";
   constexpr const char *LCNE_NODES_REQ_PATH =
       "/restconf/data/huawei-lingqu-topology:lingqu-topology/nodes";
-  constexpr const char *LCNE_ADDRESS_REQ_XPATH =
+  constexpr const char *LCNE_ADDRESS_REQ_PATH =
       "/restconf/data/huawei-lingqu-topology:lingqu-topology/addresses";
   constexpr const char *LCNE_IOU_INFOS_REQ_PATH =
       "/restconf/data/huawei-vbussw-service:vbussw-service/iou-infos";
-  constexpr const char *LCNE_LOGIC_ENTITIES_REQ_XPATH =
+  constexpr const char *LCNE_LOGIC_ENTITIES_REQ_PATH =
       "/restconf/data/huawei-vbussw-inventory:vbussw-inventory/logic-entities";
   constexpr const char *LCNE_NOTIFY_LINK_REQ_PATH =
       "/restconf/operations/notifications:create-subscription";
@@ -37,8 +35,8 @@ namespace lcne::common
   constexpr mode_t CONFIG_FILE_PERM_755 = 0755; // Todo
   constexpr mode_t CONFIG_PATH_PERM_755 = 0755;
 
-  template <typename T>
-  tinyxml2::XMLDocument *getElement(string &xml_content, Args &&...args)
+  template <typename... Args>
+  tinyxml2::XMLElement *getElement(string &xml_content, Args &&...args)
   {
     tinyxml2::XMLDocument doc;
     tinyxml2::XMLError result = doc.Parse(xml_content.c_str());
@@ -62,7 +60,7 @@ namespace lcne::common
         LOG_ERROR << "getElement-Error: get element failed, path: " << name;
         break;
       }
-      current = current->FirstChildElement(p.c_str());
+      current = current->FirstChildElement(name.c_str());
     }
     return current;
   }
@@ -71,14 +69,14 @@ namespace lcne::common
   LcneResult getNodeIpInfos(std::vector<std::string> &ipInfos);
   bool isSpecialIp(const std::string &ip);
 
-  LcneResult checkXml(tinyxml2::XMLElement *element);
+  LcneResult checkXML(tinyxml2::XMLElement *element);
 
   template <typename T>
   LcneResult convertTextToUint(tinyxml2::XMLElement *element, T &result)
   {
     static_assert(std::is_unsigned_v<T>, "T must be unsigned integer type");
-    LcneResult ret = LCNE_OK;
-    if (checkXml(element) == LCNE_FAIL)
+    LcneResult ret = LCNE_FAIL;
+    if (checkXML(element) == LCNE_FAIL)
     {
       LOG_ERROR << "convertTextToUint-Error: check xml failed, path: "
                 << element->Name();
@@ -119,7 +117,7 @@ namespace lcne::common
   {
     static_assert(std::is_unsigned_v<T>, "T must be unsigned integer type");
     LcneResult ret = LCNE_FAIL;
-    if (checkXml(element) == LCNE_FAIL)
+    if (checkXML(element) == LCNE_FAIL)
     {
       LOG_ERROR << "convertTextToOptionalUint-Error: check xml failed, path: "
                 << element->Name();

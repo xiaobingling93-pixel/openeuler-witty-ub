@@ -50,17 +50,17 @@ namespace failure {
         mode.dataSource = { opt, std::move(paths)};
         return mode;
     }
-    nlohmann::json FailureMode::ToJson() const {
+    nlohmann::json FailureEvent::ToJson() const {
         nlohmann::json json;
         if(auto time = utils::TimestampToDatetimeStr(timestamp)){
             json["time"] = *time;
         }else {
             json["time"] = "unknown";
         }
-        j["component"] = component;
-        j["path"] = path;
-        j["text"] = text;
-        j["attributes"] = attributes;
+        json["component"] = component;
+        json["path"] = path;
+        json["text"] = text;
+        json["attributes"] = attributes;
         return json;
     }
 }

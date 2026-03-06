@@ -1,4 +1,4 @@
-project (Witty-UB VERSION 0.0.1)
+project (witty-UB VERSION 0.0.1)
 add_compile_definitions(
     PROJECT_VERSION="${PROJECT_VERSION}"
 )
@@ -8,16 +8,16 @@ add_subdirectory(topology)
 add_subdirectory(plugins)
 add_subdirectory(log)
 
-add_executable(copilot-worker
-    ubse_main.cpp
+#add_executable(copilot-worker
+#    ubse_main.cpp
     # framework/database/database_module.cpp
     # topology/node_global_collector_module.cpp
     # topology/node_local_collector_module.cpp
-)
-target_include_directories(copilot-worker PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(copilot-worker PRIVATE database ubse_context topology lcne obmm failure_log rack_http)
+#)
+#target_include_directories(copilot-worker PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+#target_link_libraries(copilot-worker PRIVATE database ubse_context topology lcne obmm failure_log rack_http)
 
-add_executable(witty_ub_log
+add_executable(witty-ub-log
     witty_ub_log_main.cpp
 )
 target_include_directories(witty-ub-log PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -38,4 +38,4 @@ add_executable(witty-ub-topo
 )
 
 target_include_directories(witty-ub-topo PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(witty-ub-topo PRIVATE database ubse_context topology lcne obmm failure_log rack_http urma witty_json)
+target_link_libraries(witty-ub-topo PRIVATE database ubse_context topology lcne failure_log rack_http urma witty_json)

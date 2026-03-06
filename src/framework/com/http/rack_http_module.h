@@ -2,7 +2,7 @@
 #define HTTP_MODULE_H
 
 #include <memory>
-#include "rack_module.h
+#include "rack_module.h"
 #include "rack_error.h"
 
 namespace rack::com {

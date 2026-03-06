@@ -19,7 +19,7 @@ RackResult URMAModule::Start()
 {
     LOG_DEBUG << "Execute URMAModule Start";
     UbseContext& g_rackContext = UbseContext::GetInstance();
-    auto args = g_rackContext.GetTopoToolArgs();
+    auto args = g_rackContext.GetTopoToolsArgs();
     URMAResult ret = urmaTopology->CreateTopology(args);
     if(ret == URMA_FAIL){
         LOG_ERROR << "Execute URMAModule Start Error";

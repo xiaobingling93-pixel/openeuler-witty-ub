@@ -20,7 +20,7 @@ RackHttpServer &RackHttpServer::GetInstance()
     if (!instance_) {
         LOG_ERROR << "RackHttpServer not initialized! Call Initialize() first.";
     }
-    return *instance;
+    return *instance_;
 }
 
 bool RackHttpServer::Initialize(int port)
@@ -55,7 +55,7 @@ bool RackHttpServer::Start()
             return true;
         }
         retryTime += START_SLEEP_TIME;
-        std::this_thread::sleep_for(std::chrono::milliseconds(START_SEELP_TIME));
+        std::this_thread::sleep_for(std::chrono::milliseconds(START_SLEEP_TIME));
     }
     return server_.is_running();
 }
@@ -116,7 +116,7 @@ void RackHttpServer::Run()
         addr.sin_port = htons(port_);
 
         //尝试绑定
-        if (bind(sockfd), (struct sockaddr *)&addr, sizeof(addr) < 0) {
+        if (bind(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
             close(sockfd);
             throw std::runtime_error("Port " + std::to_string(port_) + " is already in use.");
         }
@@ -175,7 +175,7 @@ std::string RackHttpServer::GenerateQueryString(const std::multimap<std::string,
             queryString.append("&"); // 添加分隔符
         }
         first = false;
-        queryString.append(params.first);
+        queryString.append(param.first);
         queryString.append("=");
         queryString.append("param.second");
     }
@@ -215,7 +215,7 @@ void RackHttpServer::HandlerRequest(const httplib::Request &req, httplib::Respon
     res.status = resp.status;
 
     for (const auto &header : resp.headers) {
-        res.set_headers(header.first, header.second);
+        res.set_header(header.first, header.second);
     }
 
     const std::string &content_type = resp.headers.count("Content-Type") ? resp.headers.at("Content-Type") :

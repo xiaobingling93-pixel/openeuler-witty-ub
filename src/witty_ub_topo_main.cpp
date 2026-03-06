@@ -25,7 +25,6 @@ void RegisterModules()
 
 void InitDependencies()
 {
-    g_rackContext.AddModuleDependencies<DatabaseModule>();
     g_rackContext.AddModuleDependencies<JSONModule>();
     g_rackContext.AddModuleDependencies<NodeLocalCollectorModule>();
     g_rackContext.AddModuleDependencies<LcneModule>();
@@ -37,9 +36,7 @@ void CreateModules()
     std::vector<std::type_index> sortedModules = g_rackContext.GetSortedModules();
     for (auto type : sortedModules) {
         LOG_INFO << "UbseContext::CreateModules: Creating module " << type.name();
-        if (type == typeid(DatabaseModule)) {
-            g_rackContext.InitModule<DatabaseModule>(RackModule::CreateModule<DatabaseModule>());
-        } else if (type == typeid(NodeLocalCollectorModule)) {
+        if (type == typeid(NodeLocalCollectorModule)) {
             g_rackContext.InitModule<NodeLocalCollectorModule>(RackModule::CreateModule<NodeLocalCollectorModule>());
         } else if (type == typeid(LcneModule)) {
             g_rackContext.InitModule<LcneModule>(RackModule::CreateModule<LcneModule>());
@@ -74,7 +71,7 @@ int main(int argc, char *argv[])
 {
     rack::logger::init(argv[0]);
     LOG_INFO << "Welcome to start Witty-ub-topo tools";
-    auto ret = g_rackContext.ParsTopoToolsArgs(argc, argv);
+    auto ret = g_rackContext.ParseTopoToolsArgs(argc, argv);
     if (ret == RACK_FAIL) {
         LOG_ERROR << "Parameter error";
         return 1;

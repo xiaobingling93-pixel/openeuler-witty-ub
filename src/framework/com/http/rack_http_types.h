@@ -14,6 +14,7 @@ constexpr size_t httpMaxBodySize = 524288;
 enum StatusCode {
     OK_200 = 200,
     Created_201 = 201,
+    BadRequest_400 = 400,
     PreconditionFailed_412 = 412,
     NotFound_404 = 404,
     InternalServerError_500 = 500,

@@ -49,8 +49,8 @@ namespace lcne::handler
 
     struct xmlIouInfo
     {
-        string guid;
-        string busControllerEid;
+        std::string guid;
+        std::string busControllerEid;
         uint32_t slotId;
         uint32_t ubpuId;
         uint32_t iouId;
@@ -81,11 +81,11 @@ namespace lcne::handler
         uint32_t ubpuId;
         uint32_t iouId;
         std::string primaryCna;
-        std::vector<xmlAddressPhysicalPort> physicalPorts;
+        std::unordered_map<uint32_t,xmlAddressPhysicalPort> physicalPorts;
 
         xmlAddress() = default;
         xmlAddress(uint32_t slotId, uint32_t ubpuId, uint32_t iouId, const std::string &primaryCna,
-                   std::vector<xmlAddressPhysicalPort> physicalPorts)
+                   std::unordered_map<uint32_t,xmlAddressPhysicalPort> physicalPorts)
             : slotId(slotId), ubpuId(ubpuId), iouId(iouId), primaryCna(primaryCna),
               physicalPorts(std::move(physicalPorts)) {}
     };
@@ -97,23 +97,23 @@ namespace lcne::handler
         xmlLogicEntity(const std::string &state) : state(state) {}
     };
 
-    LcneResult getXMLNodes(string request_path, map<lcne_key, xmlNode> &xml_nodes);
+    LcneResult getXMLNodes(std::string request_path, std::map<lcne_key, xmlNode> &xml_nodes);
     LcneResult getNodePhysicalPorts(tinyxml2::XMLElement *element,
                                     std::unordered_map<uint32_t, xmlPhysicalPort> &xml_physical_ports);
-    LcneResult getXMLIouInfo(string request_path, map<lcne_key, xmlIouInfo> &xml_iou_infos);
-    LcneResult getXMLAddress(string request_path, map<lcne_key, xmlAddress> &xml_addresses);
+    LcneResult getXMLIouInfo(std::string request_path, std::map<lcne_key, xmlIouInfo> &xml_iou_infos);
+    LcneResult getXMLAddress(std::string request_path, std::map<lcne_key, xmlAddress> &xml_addresses);
     LcneResult getAddressPhysicalPorts(tinyxml2::XMLElement *element,
                                        std::unordered_map<uint32_t, xmlAddressPhysicalPort> &xml_address_physical_ports);
-    LcneResult getXMLLogicEntities(string request_path, shared_ptr<xmlLogicEntity> &xml_logic_entity);
-    LcneResult generateLcneNodes(const map<lcne_key, xmlNode> &xml_nodes, vector<shared_ptr<Node>> &nodes);
+    LcneResult getXMLLogicEntities(std::string request_path, std::shared_ptr<xmlLogicEntity> &xml_logic_entity);
+    LcneResult generateLcneNodes(const std::map<lcne_key, xmlNode> &xml_nodes, std::vector<std::shared_ptr<topology::node::Node>> &nodes);
     LcneResult generateLcneUBController(
-        const map<lcne_key, xmlNode> &xml_nodes,
-        const map<lcne_key, xmlIouInfo> &xml_iou_infos,
-        const shared_ptr<xmlLogicEntity> &xml_logic_entity,
-        vector<shared_ptr<UbController>> &ub_controllers);
+        const std::map<lcne_key, xmlNode> &xml_nodes,
+        const std::map<lcne_key, xmlIouInfo> &xml_iou_infos,
+        const std::shared_ptr<xmlLogicEntity> &xml_logic_entity,
+        std::vector<std::shared_ptr<topology::node::UbController>> &ub_controllers);
     LcneResult generateLcnePort(
-        const map<lcne_key, xmlNode> &xml_nodes,
-        const map<lcne_key, xmlAddress> &xml_addresses,
-        vector<shared_ptr<Port>> &ports);
+        const std::map<lcne_key, xmlNode> &xml_nodes,
+        const std::map<lcne_key, xmlAddress> &xml_addresses,
+        std::vector<std::shared_ptr<topology::node::Port>> &ports);
 } // namespace lcne::handler
 #endif // LCNE_DATA_HANDLER_H

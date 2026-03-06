@@ -12,7 +12,7 @@
 
 namespace lcne::common
 {
-  std::string lcne::common::getHostname()
+  std::string getHostname()
   {
     char hostname[HOST_NAME_MAX];
     if (gethostname(hostname, sizeof(hostname)) == 0)
@@ -30,7 +30,7 @@ namespace lcne::common
   {
     LcneResult ret = LCNE_FAIL;
     std::ifstream file("/proc/net/fib_trie");
-    if (!ifs.is_open())
+    if (!file.is_open())
     {
       LOG_ERROR << "getNodeIpInfos-Error: open /proc/net/fib_trie failed";
       return ret;
@@ -107,11 +107,11 @@ namespace lcne::common
     return r;
   }
 
-  LcneResult getHttpData(const std::string &resp_body, std::string &req_path)
+  LcneResult getHttpData(std::string &resp_body, std::string req_path)
   {
     rack::com::RackHttpClient client(std::string(LCNE_URL) + ":" +
                                      std::string(LCNE_PORT));
-    rack::com::RackContext ctx;
+    rack::com::RackComContext ctx;
     ctx.metadata["Content-Type"] = LCNE_CONTENT_TYPE;
     rack::com::RackHttpRequest req;
     req.method = rack::com::RackHttpMethod::GET;
@@ -184,7 +184,7 @@ namespace lcne::common
 
     rack::com::RackHttpClient client(std::string(LCNE_URL) + ":" +
                                      std::string(LCNE_PORT));
-    rack::com::RackContext ctx;
+    rack::com::RackComContext ctx;
     ctx.metadata["Content-Type"] = LCNE_CONTENT_TYPE;
     ctx.metadata["Accept"] = LCNE_CONTENT_TYPE;
     rack::com::RackHttpRequest req;
@@ -226,7 +226,7 @@ namespace lcne::common
   bool mkdirRecursive(const std::string &dir)
   {
     struct stat info;
-    if (stat(path.c_str(), &info) == 0 && S_ISDIR(info.st_mode))
+    if (stat(dir.c_str(), &info) == 0 && S_ISDIR(info.st_mode))
     {
       return true;
     }
@@ -239,7 +239,7 @@ namespace lcne::common
         return false;
       }
     }
-    return mkdir(path.c_str(), lcne::common::CONFIG_PATH_PERM_755) == 0 || errno == EEXIST;
+    return mkdir(dir.c_str(), lcne::common::CONFIG_PATH_PERM_755) == 0 || errno == EEXIST;
   }
 
   LcneResult SaveIpToConfigFile(std::string master_ip)
@@ -297,4 +297,3 @@ namespace lcne::common
     return LCNE_SUCCESS;
   }
 } // namespace lcne::common
-#endif // LCNE_COMMON_H_

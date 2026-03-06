@@ -6,19 +6,19 @@
 namespace witty_json::module {
 using namespace rack::module;
 using namespace witty_json::io;
-class JsonModule : public RackModule {
+class JSONModule : public RackModule {
 public:
-  ~JsonModule() override = default;
+  ~JSONModule() override = default;
   RackResult Initialize() override;
-  void Uninitialize() override;
+  void UnInitialize() override;
   RackResult Start() override;
   void Stop() override;
-  JsonModule() = default;
+  JSONModule() = default;
 
   template <typename... Pairs>
-  RackResult WriteVectorsTofile(const std::string &filename, Pairs &&...pairs) {
+  RackResult WriteVectorsToFile(const std::string &filename, Pairs &&...pairs) {
     auto ret =
-        json_io->WriteVectorsTofile(filename, std::forward<Pairs>(pairs)...);
+        json_io->WriteVectorsToFile(filename, std::forward<Pairs>(pairs)...);
     if (ret != RACK_OK) {
       LOG_ERROR
           << "JsonModule::WriteVectorsTofile-Error: failed to write to file "

@@ -16,7 +16,7 @@ namespace rack::logger {
         FLAGS_logtostderr = true;
         FLAGS_colorlogtostderr = true;
 
-        const char* debug_env = std::getenv("WITTY-UB_DEBUG");
+        const char* debug_env = std::getenv("RACK_DEBUG");
         FLAGS_v = (debug_env && std::string(debug_env) == "1") ? 1 : 0;
     }
     inline void shutdown() {
@@ -100,5 +100,4 @@ namespace rack::logger {
 #define LOG_INFO rack::logger::LogStream(rack::logger::LogStream::INFO, MODULE_NAME)
 #define LOG_WARN rack::logger::LogStream(rack::logger::LogStream::WARN, MODULE_NAME)
 #define LOG_ERROR rack::logger::LogStream(rack::logger::LogStream::ERROR, MODULE_NAME)
-#define LOG_DEBUG \
-    if (FLAGS_v >= 1) rack::logger::DebugLogStream(__FILE__, __LINE__, MODULE_NAME)
+#define LOG_DEBUG if (FLAGS_v >= 1) rack::logger::DebugLogStream(__FILE__, __LINE__, MODULE_NAME)
