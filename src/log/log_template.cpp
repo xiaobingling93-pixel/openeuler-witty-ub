@@ -42,7 +42,6 @@ namespace failure::log {
         if (!timestamp) {
             return std::nullopt;
         }
-        attributes.erase(it);
 
         FailureEvent event;
         event.timestamp = *timestamp;
@@ -91,6 +90,7 @@ namespace failure::log {
                         break;
                     }
                     std::string fieldName = fieldExpr.substr(0, rangeStart);
+                    fields_.push_back(fieldName);
                     std::string rangeExpr = fieldExpr.substr(rangeStart + 1, rangeEnd - rangeStart - 1);
                     std::vector<std::string> range;
                     utils::Split(range, rangeExpr, '/', /*keepEmpty=*/true);

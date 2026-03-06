@@ -11,60 +11,107 @@
  */
 
 #pragma once
+
 #include <optional>
-#include <string>
-#include <unordered_map>
-#include <vector>
 #include <sstream>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+#include <json/json.h>
 
 namespace failure {
-    enum class DataSourceOption{
-        UNKNOWN,
+    enum class DataSourceOption {
         KERNEL,
         USER
     };
-    enum class EventTypeOption{
-        UNKNOWN,
+
+    enum class EventTypeOption {
         BIND,
         UNBIND,
         POST
     };
 
-    struct DataSource{
-        DataSourceOption option;
-        std::vector<std::string> paths;
+    static const std::unordered_map<std::string_view, EventTypeOption> umqFuncEventTypeMap = {
+        { "umq_ub_bind_inner_impl", EventTypeOption::BIND },
+        { "umq_ub_connect_jetty", EventTypeOption::BIND },
+        { "umq_ub_unbind_impl", EventTypeOption::UNBIND },
+        { "umq_ub_post_tx", EventTypeOption::POST },
+        { "umq_ub_poll_tx", EventTypeOption::POST },
+        { "umq_ub_post_rx_inner_impl", EventTypeOption::POST },
+        { "umq_ub_poll_rx", EventTypeOption::POST },
     };
-    struct FailureMode{
+
+    static const std::unordered_map<std::string_view, std::string_view> umqFuncRoleMap = {
+        { "umq_ub_post_tx", "tx" },
+        { "umq_ub_poll_tx", "tx" },
+        { "umq_ub_post_rx_inner_impl", "rx" },
+        { "umq_ub_poll_rx", "rx" },
+    };
+
+    struct PathCell {
+        std::optional<std::string> podId;
+        std::string path;
+
+        PathCell() = default;
+        PathCell(const std::optional<std::string>& podId, const std::string& path);
+    };
+
+    struct DataSource {
+        DataSourceOption option;
+        std::vector<PathCell> pathCells;
+    };
+
+    struct FailureMode {
         std::string component;
         std::string version;
         DataSource dataSource;
         bool isMultiline;
         std::string manifest;
 
-        static FailureMode FromJson(const std::string& jsonStr);
+        static FailureMode FromJson(const Json::Value& j);
     };
 
-    struct FailureEvent{
+    struct FailureEvent {
         int64_t timestamp;
         std::string component;
-        std::string path;
+        PathCell pathCell;
         std::string text;
         std::unordered_map<std::string, std::string> attributes;
 
-        std::string ToJson() const;
+        Json::Value ToJson() const;
     };
-    struct FailureEventQuery{
+
+    struct FailureMetadata {
+        EventTypeOption eventType;
+        std::optional<std::string> podId;
+        std::string programName;
+        std::string procId;
+        int64_t timestamp;
+        std::string localEid;
+        std::string localJettyId;
+        std::optional<std::string> remoteEid;
+        std::optional<std::string> remoteJettyId;
+        std::string text;
+        std::optional<std::string> role;
+        std::vector<FailureEvent> events;
+
+        Json::Value ToJson() const;
+    };
+
+    struct FailureEventQuery {
         int64_t startTime;
         int64_t endTime;
-        std::vector<EventTypeOption> eventTypes;
-        std::vector<std::string> podIds;
-        std::vector<std::string> localEids;
-        std::vector<std::string> jettyIds;
+        std::unordered_set<EventTypeOption> eventTypes;
+        std::unordered_set<std::string> podIds;
+        std::unordered_set<std::string> localEids;
+        std::unordered_set<std::string> jettyIds;
 
-        bool Match(const FailureEvent& event) const;
+        bool Match(const FailureMetadata& metadata, bool podMode) const;
     };
 
-    DataSourceOption DataSourceOptionFromString(const std::string& str);
-    EventTypeOption EventTypeOptionFromString(const std::string& str);
-
+    std::optional<EventTypeOption> EventTypeOptionFromString(const std::string& str);
+    std::string EventTypeOptionToString(EventTypeOption opt);
 }

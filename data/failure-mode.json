@@ -11,7 +11,7 @@
         "version": "all",
         "log_path": "dmesg",
         "is_multiline": true,
-        "manifest": "<datetime> ub_generic_component {<identifier>}: <>"
+        "manifest": "<datetime> ub_generic_component <identifier>: <>"
     },
     {
         "component": "ubsocket",

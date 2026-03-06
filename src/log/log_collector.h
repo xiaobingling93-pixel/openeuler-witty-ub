@@ -16,9 +16,6 @@
 #include <fstream>
 #include <mutex>
 #include <thread>
-#ifndef TOOL_MODE
-#include <chrono>
-#endif
 
 #include "rack_module.h"
 #include "log_reader.h"
@@ -30,7 +27,7 @@ namespace failure::log {
         void UnInitialize();
         RackResult Start();
         void Stop();
-    
+
     private:
         RackResult CreateReaders();
         RackResult ParseArg();
@@ -42,9 +39,7 @@ namespace failure::log {
 
     private:
         bool podMode_{ false };
-        std::string input_;
-        std::string output_;
-        std::unordered_map<std::string, std::vector<std::string>> customizedLogPath_;
+        std::unordered_map<std::string, std::vector<PathCell>> customizedLogPath_;
         FailureEventQuery query_;
 
         std::atomic_bool running_{ false };
@@ -53,10 +48,7 @@ namespace failure::log {
         std::mutex mutex_;
 
         std::vector<std::shared_ptr<LogReader>> readers_;
-        std::vector<FailureEvent> events_;
-
-#ifndef TOOL_MODE
-        std::chrono::milliseconds interval_{ 1000 };
-#endif
+        std::unordered_map<std::string, std::vector<FailureEvent>> eventsMap_;
+        std::vector<FailureMetadata> metadata_;
     };
 }
