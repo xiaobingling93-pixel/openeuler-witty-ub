@@ -10,31 +10,39 @@
  * See the Mulan PSL v2 for more details.
  */
 
-#ifndef URMA_MODULE_H
-#define URMA_MODULE_H
-
+#ifndef MEM_COLLECTOR_MODULE_H
+#define MEM_COLLECTOR_MODULE_H
+#include <string>
+#include <vector>
 #include <memory>
+#include <iostream>
 #include "rack_module.h"
 #include "rack_error.h"
-#include "urma_topology.h"
-#include "witty_json.h"
+#include "mem_collector.h"
+#include "database_module.h"
 
-namespace urma::module {
+namespace topology::mem {
 using namespace rack::module;
-class URMAModule : public RackModule{
+using namespace database;
+class MemGlobalCollectorModule : public RackModule {
 public:
-    URMAModule()
+    MemGlobalCollectorModule()
     {
-        dependencies.push_back(typeid(witty_json::module::JSONModule));
+        dependencies.push_back(typeid(DatabaseModule));
     }
-    ~URMAModule() override = default;
+    ~MemGlobalCollectorModule() override = default;
     RackResult Initialize() override;
     void UnInitialize() override;
     RackResult Start() override;
     void Stop() override;
+    shared_ptr<MemCollector> GetCollector()
+    {
+        return collector;
+    }
+    RackResult InsertExportMemoryData(vector<unordered_map<std::string, std::string>> &exportMemories);
+    RackResult InsertImportMemoryData(vector<unordered_map<std::string, std::string>> &importMemories);
 private:
-    std::shared_ptr<urma::topo::URMATopology> urmaTopology;
+    shared_ptr<MemCollector> collector;
 };
 }
-
-#endif //URMA_MODULE_H
+#endif // MEM_GLOBAL_COLLECTOR_MODULE_H
