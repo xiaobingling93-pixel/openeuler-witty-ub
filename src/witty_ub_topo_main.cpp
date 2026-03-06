@@ -27,7 +27,7 @@ using namespace topology::node;
 using namespace lcne::module;
 using namespace urma::module;
 using namespace witty_json::module;
-UbseContext &g_rackContext = UbseContext::GetInstance();
+UbseContext& g_rackContext = UbseContext::GetInstance();
 void RegisterModules()
 {
     g_rackContext.RegisterModule<LcneModule>();
@@ -50,13 +50,17 @@ void CreateModules()
         LOG_INFO << "UbseContext::CreateModules: Creating module " << type.name();
         if (type == typeid(NodeLocalCollectorModule)) {
             g_rackContext.InitModule<NodeLocalCollectorModule>(RackModule::CreateModule<NodeLocalCollectorModule>());
-        } else if (type == typeid(LcneModule)) {
+        }
+        else if (type == typeid(LcneModule)) {
             g_rackContext.InitModule<LcneModule>(RackModule::CreateModule<LcneModule>());
-        } else if (type == typeid(URMAModule)) {
+        }
+        else if (type == typeid(URMAModule)) {
             g_rackContext.InitModule<URMAModule>(RackModule::CreateModule<URMAModule>());
-        } else if (type == typeid(JSONModule)) {
+        }
+        else if (type == typeid(JSONModule)) {
             g_rackContext.InitModule<JSONModule>(RackModule::CreateModule<JSONModule>());
-        } else {
+        }
+        else {
             LOG_ERROR << "CreateModule-Error: module " << type.name() << " not defined";
         }
     }
@@ -79,10 +83,11 @@ void UnInitializeAndStopModules()
         }
     }
 }
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     rack::logger::init(argv[0]);
     LOG_INFO << "Welcome to start Witty-ub-topo tools";
+    g_rackContext.CreateWittyDir();
     auto ret = g_rackContext.ParseTopoToolsArgs(argc, argv);
     if (ret == RACK_FAIL) {
         LOG_ERROR << "Parameter error";

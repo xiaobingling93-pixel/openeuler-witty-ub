@@ -40,7 +40,7 @@ namespace ubse::context
     class UbseContext
     {
     public:
-        static UbseContext &GetInstance()
+        static UbseContext& GetInstance()
         {
             static UbseContext instance;
             return instance;
@@ -56,7 +56,8 @@ namespace ubse::context
             }
             return;
         }
-        RackResult ParseArgs(int argc, char *argv[]);
+        RackResult CreateWittyDir();
+        RackResult ParseArgs(int argc, char* argv[]);
         template <typename T>
         RackResult RegisterModule()
         {
@@ -97,8 +98,8 @@ namespace ubse::context
         std::unordered_map<std::type_index, std::shared_ptr<RackModule>> GetModuleMap();
         std::string GetRole();
         RackResult InitAndStartModules();
-        const std::unordered_map<std::string, std::string> &GetArgMap() const;
-        RackResult Run(int argc, char *argv[]);
+        const std::unordered_map<std::string, std::string>& GetArgMap() const;
+        RackResult Run(int argc, char* argv[]);
         template <typename T>
         std::shared_ptr<T> GetModule()
         {
@@ -119,7 +120,7 @@ namespace ubse::context
             }
             return nullptr;
         }
-        RackResult ParseTopoToolsArgs(int argc, char *argv[]);
+        RackResult ParseTopoToolsArgs(int argc, char* argv[]);
         TopoToolsArgs GetTopoToolsArgs() { return topoArgs; }
 
     private:
@@ -129,7 +130,7 @@ namespace ubse::context
         std::unordered_set<std::type_index> initModules;
         std::vector<std::type_index> sortedModules;
         std::unordered_map<std::string, std::string> argMap;
-        std::atomic_bool running_{true};
+        std::atomic_bool running_{ true };
         ubse::context::TopoToolsArgs topoArgs;
     };
 } // namespace ubse::context
