@@ -32,4 +32,4 @@ private:
     shared_ptr<MemCollector> collector;
 };
 }
-#endif // MEM_GLOBAL_COLLECTOR_MODULE_H
+#endif // MEM_LOCAL_COLLECTOR_MODULE_H

@@ -21,7 +21,7 @@ public:
     OP_RET InsertImportMemoryData(vector<unordered_map<std::string, std::string>> &importMems);
 private:
     unordered_map<uint32_t, vector<ExportMemory>> exportMemoryInfos;
-    unordered_map<uint32_t, vector<ExportMemory>> importMemoryInfos;
+    unordered_map<uint32_t, vector<ImportMemory>> importMemoryInfos;
     shared_ptr<Database> db;
 };
 }

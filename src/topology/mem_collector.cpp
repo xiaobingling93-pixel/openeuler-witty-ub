@@ -13,9 +13,9 @@ OP_RET MemCollector::InitDb(std::shared_ptr<Database> db_)
     std::cout << "init db" << std::endl;
     return SUCCESS;
 }
-OP_RET MemColellector::StartDb()
+OP_RET MemCollector::StartDb()
 {
-    OP_RET ret = db -> CreateTable("ExportMemory", vector<tuple<string, sting, bool, bool>>({
+    OP_RET ret = db -> CreateTable("ExportMemory", vector<tuple<string, string, bool, bool>>({
         make_tuple("tokenId", "TEXT", true, false),
         make_tuple("cachable", "TEXT", true, false),
         make_tuple("ubaddr", "TEXT", true, true),
@@ -59,10 +59,10 @@ OP_RET MemCollector::InsertImportMemoryData(vector<unordered_map<std::string, st
         if (ret != OP_RET::SUCCESS) {
             res = ret;
         }
-        return res;
     }
+    return res;
 }
-OP_RET MemCollector::InsertExportMemoryData(vector<unordered_map<std::string, std::string>> &exportMemmories)
+OP_RET MemCollector::InsertExportMemoryData(vector<unordered_map<std::string, std::string>> &exportMemories)
 {
     OP_RET res = OP_RET::SUCCESS;
     for (auto exportMemory: exportMemories) {

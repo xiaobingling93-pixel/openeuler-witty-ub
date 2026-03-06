@@ -4,7 +4,7 @@
 #include <iostream>
 #include "obmm_mem_collector.h"
 namespace obmm::collector {
-ObmmResut ObmmMemCollector::GetCurrMemAllDataMap(std::vector<std::unordered_map<std::string, std::string>> &exportMemories,
+ObmmResult ObmmMemCollector::GetCurrMemAllDataMap(std::vector<std::unordered_map<std::string, std::string>> &exportMemories,
                                                  std::vector<std::unordered_map<std::string, std::string>> &importMemories)
 {
     ObmmResult ret = GetCurrMemExportMemoryDataMap(exportMemories);

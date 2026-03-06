@@ -20,7 +20,7 @@ public:
     RackResult Initialize() override;
     void UnInitialize() override;
     RackResult Start() override;
-    void Stop() oeverride;
+    void Stop() override;
 private:
     std::shared_ptr<ObmmMemCollector> obmmCollector;
     std::shared_ptr<MemLocalCollectorModule> memLocalCollectorModule;

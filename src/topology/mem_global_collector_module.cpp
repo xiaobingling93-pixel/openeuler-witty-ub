@@ -14,7 +14,7 @@ RackResult MemGlobalCollectorModule::Initialize()
 {
     collector = std::make_shared<MemCollector>();
     OP_RET ret = collector -> InitDb(UbseContext::GetInstance().GetModule<DatabaseModule>() -> GetDatabase());
-    std::cout << "MemGlobalCollectorModule Initialized " << ret <<std::endl;
+    std::cout << "MemGlobalCollectorModule Initialized " << ret << std::endl;
     return RACK_OK;
 }
 void MemGlobalCollectorModule::UnInitialize()

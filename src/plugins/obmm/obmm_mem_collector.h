@@ -12,7 +12,7 @@ constexpr ObmmResult FAIL = 1;
 class ObmmMemCollector {
 public:
     ObmmResult GetCurrMemAllDataMap(std::vector<std::unordered_map<std::string, std::string>> &exportMemories,
-                                    std::vector<std::unrodered_map<std::string, std::string>> &importMemories);
+                                    std::vector<std::unordered_map<std::string, std::string>> &importMemories);
     ObmmResult GetCurrMemExportMemoryDataMap(std::vector<std::unordered_map<std::string, std::string>> &exportMemories);
     ObmmResult GetCurrMemImportMemoryDataMap(std::vector<std::unordered_map<std::string, std::string>> &importMemories);
 };

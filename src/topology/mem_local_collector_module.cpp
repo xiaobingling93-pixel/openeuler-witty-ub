@@ -1,5 +1,5 @@
 #include <tuple>
-#include <iostream>
+#include <typeindex>
 #include "mem_local_collector_module.h"
 #include "rack_error.h"
 #include "database_module.h"
@@ -11,7 +11,7 @@ using namespace database;
 RackResult MemLocalCollectorModule::Initialize()
 {
     collector = std::make_shared<MemCollector>();
-    OP_RET ret = collector -> InitDb(UbseContext::GetInstance().GetModule<DatabaseModule>() -> GetDatabase());
+    collector -> InitDb(UbseContext::GetInstance().GetModule<DatabaseModule>() -> GetDatabase());
     return RACK_OK;
 }
 void MemLocalCollectorModule::UnInitialize()
@@ -29,12 +29,12 @@ void MemLocalCollectorModule::Stop()
 }
 RackResult MemLocalCollectorModule::InsertExportMemoryData(vector<unordered_map<std::string, std::string>> &exportMemories)
 {
-    OP_RET ret = collector -> InsertExportMemoryData(exportMemories);
-    return RACK_OK;
+    RackResult ret = collector -> InsertExportMemoryData(exportMemories);
+    return ret;
 }
 RackResult MemLocalCollectorModule::InsertImportMemoryData(vector<unordered_map<std::string, std::string>> &importMemories)
 {
-    OP_RET ret = collector -> InsertImportMemoryData(importMemories);
-    return RACK_OK;
+    RackResult ret = collector -> InsertImportMemoryData(importMemories);
+    return ret;
 }
 }
