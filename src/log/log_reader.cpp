@@ -3,6 +3,7 @@
 #include "log_reader.h"
 
 #include <array>
+#include <filesystem>
 
 #include "logger.h"
 #include "utils.h"
@@ -10,8 +11,8 @@
 namespace failure::log {
     constexpr std::size_t BUFFER_SIZE = 512;
 
-    LogReader::LogReader(DataSourceOption option, const std::string& path, int64_t startTime, int64_t endTime)
-        : path_(path)
+    LogReader::LogReader(DataSourceOption option, const PathCell& pathCell, int64_t startTime, int64_t endTime)
+        : pathCell_(pathCell)
         , startTime_(startTime)
         , endTime_(endTime)
         , handle_(nullptr)
@@ -28,7 +29,7 @@ namespace failure::log {
     void LogReader::CreateHandle()
     {
         if (!handle_ && opener_) {
-            handle_ = opener_(path_);
+            handle_ = opener_(pathCell_.path);
         }
     }
 
@@ -57,7 +58,7 @@ namespace failure::log {
                 LogTemplate& tmpl = entry->first;
                 std::unordered_map<std::string, std::string>& attributes = entry->second;
                 if (auto event = tmpl.CreateEvent(attributes, *line)) {
-                    event->path = path_;
+                    event->pathCell = pathCell_;
                     return event;
                 }
             }
@@ -81,7 +82,7 @@ namespace failure::log {
                 }
                 attributes.erase(it);
                 if (auto event = tmpl.CreateEvent(attributes, lines)) {
-                    event->path = path_;
+                    event->pathCell = pathCell_;
                     return event;
                 }
             }
@@ -110,21 +111,31 @@ namespace failure::log {
     {
         if (option == DataSourceOption::KERNEL) {
             opener_ = [&](const std::string& p) {
-                std::string awkScript = R"(BEGIN{
-  mon["Jan"]=1; mon["Feb"]=2; mon["Mar"]=3; mon["Apr"]=4;
-  mon["May"]=5; mon["Jun"]=6; mon["Jul"]=7; mon["Aug"]=8;
-  mon["Sep"]=9; mon["Oct"]=10; mon["Nov"]=11; mon["Dec"]=12;
-}
-{
-  match($0, /^\[(.*)\]/, a)
-  split(a[1], f, " ")
-  split(f[4], t, ":")
-  ts = mktime(f[5]" "mon[f[2]]" "f[3]" "t[1]" "t[2]" "t[3]")
-  if (ts < s) next
-  if (ts > e) exit
-  print
-})";
-                std::string cmd = p + " -T | gawk -v s=" + std::to_string(startTime_) + " -v e=" + std::to_string(endTime_) + " '" + awkScript + "'";
+                std::string script = R"(
+        BEGIN {
+            mon["Jan"]=1; mon["Feb"]=2; mon["Mar"]=3; mon["Apr"]=4;
+            mon["May"]=5; mon["Jun"]=6; mon["Jul"]=7; mon["Aug"]=8;
+            mon["Sep"]=9; mon["Oct"]=10; mon["Nov"]=11; mon["Dec"]=12;
+        }
+        {
+            if (index($1, "[") != 1) next;
+            year = $5; sub(/\]/, "", year);
+            split($4, t, ":");
+            ts = mktime(year " " mon[$2] " " $3 " " t[1] " " t[2] " " t[3]);
+            if (ts < s) next;
+            if (ts > e) exit;
+            print $0;
+        }
+    )";
+                int64_t startSec = startTime_ / 1000000;
+                int64_t endSec = endTime_ / 1000000;
+                std::string cmd = "gawk -v s=" + std::to_string(startSec) + " -v e=" + std::to_string(endSec) + " -e '" + script + "' ";
+                if (std::filesystem::is_regular_file(p)) {
+                    cmd += p;
+                }
+                else {
+                    cmd = p + " -T | " + cmd;
+                }
                 return popen(cmd.c_str(), "r");
                 };
             closer_ = [](FILE* f) {

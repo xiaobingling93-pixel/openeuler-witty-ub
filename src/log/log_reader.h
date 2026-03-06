@@ -11,20 +11,20 @@
 namespace failure::log {
     class LogReader {
     public:
-        LogReader(DataSourceOption option, const std::string& path, int64_t startTime, int64_t endTime);
+        LogReader(DataSourceOption option, const PathCell& pathCell, int64_t startTime, int64_t endTime);
         ~LogReader();
 
         void CreateHandle();
         void DestroyHandle();
         void AddFailureMode(const FailureMode& mode);
         std::optional<FailureEvent> ReadOnce();
-    
+
     private:
         std::optional<std::string> ReadNextLine();
         void ConfigureHandle(DataSourceOption option);
-    
+
     private:
-        std::string path_;
+        PathCell pathCell_;
         int64_t startTime_;
         int64_t endTime_;
 

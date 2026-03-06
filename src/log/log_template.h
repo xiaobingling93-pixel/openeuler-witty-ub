@@ -18,7 +18,7 @@ namespace failure::log {
 
         void CreateRegexCaptor(const std::string& manifest);
         std::optional<std::unordered_map<std::string, std::string>> CaptureFields(const std::string& line) const;
-    
+
     private:
         FailureMode mode_;
         std::regex pattern_;

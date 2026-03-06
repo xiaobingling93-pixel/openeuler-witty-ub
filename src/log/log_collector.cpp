@@ -2,6 +2,7 @@
 
 #include "log_collector.h"
 
+#include <algorithm>
 #include <filesystem>
 
 #include "failure_def.h"
@@ -11,6 +12,18 @@
 
 namespace failure::log {
     using namespace ubse::context;
+
+    constexpr const char* FAILURE_MODE_FILE = "./data/failure-mode.json";
+    constexpr const char* FAILURE_EVENT_FILE = "/var/witty-ub/failure-event.json";
+
+    inline static const std::regex biEndRe(
+        R"(local eid: ([0-9a-f:]+), local jetty_id: (\d+), remote eid: ([0-9a-f:]+), remote jetty_id: (\d+))",
+        std::regex::optimize
+    );
+    inline static const std::regex singleEndRe(
+        R"(eid: ([0-9a-f:]+), jetty_id: (\d+))",
+        std::regex::optimize
+    );
 
     RackResult LogCollector::Initialize()
     {
@@ -33,7 +46,7 @@ namespace failure::log {
 
     RackResult LogCollector::Start()
     {
-        auto ReaderLoopOnce = [&](auto& reader) {
+        auto ReaderLoopOnce = [&](std::shared_ptr<LogReader> reader) {
             try {
                 reader->CreateHandle();
             }
@@ -47,12 +60,9 @@ namespace failure::log {
                 if (!event) {
                     break;
                 }
-                if (!query_.Match(*event)) {
-                    continue;
-                }
                 {
                     std::lock_guard<std::mutex> lk(mutex_);
-                    events_.push_back(std::move(*event));
+                    eventsMap_[event->component].push_back(*event);
                 }
             }
 
@@ -67,20 +77,10 @@ namespace failure::log {
         workerThreads_.clear();
         workerThreads_.reserve(readers_.size());
 
-#ifndef TOOL_MODE
-        LOG_DEBUG << "LogCollector running with per-reader threads (poll)";
-        for (auto reader : readers_) {
-            workerThreads_.emplace_back([&, reader]() {
-                while (running_.load(std::memory_order_acquire)) {
-                    ReaderLoopOnce(reader);
-                    std::this_thread::sleep_for(interval_);
-                }
-            });
-        }
-#else
+#ifdef ENABLE_TOOL_FEATURE
         LOG_DEBUG << "LogCollector running in tool mode with per-reader threads (run once)";
         for (auto reader : readers_) {
-            workerThreads_.emplace_back([&,reader]() {
+            workerThreads_.emplace_back([&, reader]() {
                 ReaderLoopOnce(reader);
                 });
         }
@@ -90,8 +90,134 @@ namespace failure::log {
             }
         }
         workerThreads_.clear();
-
         running_.store(false, std::memory_order_release);
+
+        if (eventsMap_.find("umq") == eventsMap_.end()) {
+            LOG_INFO << "no umq events found";
+            return RACK_OK;
+        }
+        for (const FailureEvent& event : eventsMap_.at("umq")) {
+            if (event.attributes.at("alarm_level") != "error") {
+                continue;
+            }
+            FailureMetadata metadata;
+            auto it = umqFuncEventTypeMap.find(event.attributes.at("function_name"));
+            if (it == umqFuncEventTypeMap.end()) {
+                continue;
+            }
+            metadata.eventType = it->second;
+            if (metadata.eventType == EventTypeOption::POST) {
+                auto it = umqFuncRoleMap.find(event.attributes.at("function_name"));
+                if (it != umqFuncRoleMap.end()) {
+                    metadata.role = it->second;
+                }
+            }
+            metadata.podId = event.pathCell.podId;
+            metadata.programName = event.attributes.at("program_name");
+            metadata.procId = event.attributes.at("proc_id");
+            metadata.timestamp = event.timestamp;
+            metadata.text = event.text;
+            std::smatch match;
+            if (std::regex_search(event.attributes.at("content"), match, biEndRe)) {
+                metadata.localEid = match[1].str();
+                metadata.localJettyId = match[2].str();
+                metadata.remoteEid = match[3].str();
+                metadata.remoteJettyId = match[4].str();
+            }
+            else if (std::regex_search(event.attributes.at("content"), match, singleEndRe)) {
+                metadata.localEid = match[1].str();
+                metadata.localJettyId = match[2].str();
+            }
+
+            if (query_.Match(metadata, podMode_)) {
+                metadata_.push_back(metadata);
+            }
+        }
+        std::sort(metadata_.begin(), metadata_.end(), [](const FailureMetadata& a, const FailureMetadata& b) {
+            return a.timestamp < b.timestamp;
+            });
+
+        for (FailureMetadata& metadata : metadata_) {
+            int64_t timeWindow = 10 * 1000000LL;
+            int64_t startTime = 0;
+            int64_t endTime = 0;
+
+            for (auto& [component, events] : eventsMap_) {
+                if (component == "hardware") {
+                    continue;
+                }
+                else if (component == "ubsocket") {
+                    startTime = metadata.timestamp;
+                    endTime = metadata.timestamp + timeWindow;
+                }
+                else {
+                    startTime = metadata.timestamp - timeWindow;
+                    endTime = metadata.timestamp;
+                }
+
+                for (FailureEvent& event : events) {
+                    if (event.timestamp < startTime || event.timestamp > endTime) {
+                        continue;
+                    }
+                    if (podMode_ && event.pathCell.podId && metadata.podId && event.pathCell.podId != metadata.podId) {
+                        continue;
+                    }
+
+                    bool resourceMatch = false;
+                    if (component == "umq" || component == "liburma") {
+                        auto itProgramName = event.attributes.find("program_name");
+                        auto itProcId = event.attributes.find("proc_id");
+                        if (itProgramName != event.attributes.end() && itProcId != event.attributes.end() &&
+                            itProgramName->second == metadata.programName && itProcId->second == metadata.procId) {
+                            resourceMatch = true;
+                        }
+                    }
+                    if (component == "umq") {
+                        auto it = event.attributes.find("content");
+                        if (it != event.attributes.end()) {
+                            const std::string& content = it->second;
+                            std::string localEid, localJettyId;
+                            std::optional<std::string> remoteEid, remoteJettyId;
+                            std::smatch match;
+                            if (std::regex_search(content, match, biEndRe)) {
+                                localEid = match[1].str();
+                                localJettyId = match[2].str();
+                                remoteEid = match[3].str();
+                                remoteJettyId = match[4].str();
+                            }
+                            else if (std::regex_search(content, match, singleEndRe)) {
+                                localEid = match[1].str();
+                                localJettyId = match[2].str();
+                            }
+
+                            if (localEid == metadata.localEid && localJettyId == metadata.localJettyId && remoteEid == metadata.remoteEid && remoteJettyId == metadata.remoteJettyId) {
+                                resourceMatch = true;
+                                event.attributes["local_eid"] = localEid;
+                                event.attributes["local_jetty_id"] = localJettyId;
+                                if (remoteEid) {
+                                    event.attributes["remote_eid"] = *remoteEid;
+                                }
+                                if (remoteJettyId) {
+                                    event.attributes["remote_jetty_id"] = *remoteJettyId;
+                                }
+                            }
+                        }
+                    }
+                    if (component == "urmacore" || component == "udmacore" || component == "libudma" || component == "ubsocket") {
+                        resourceMatch = true;
+                    }
+
+                    if (resourceMatch) {
+                        metadata.events.push_back(event);
+                    }
+                }
+                std::sort(metadata.events.begin(), metadata.events.end(), [](const FailureEvent& a, const FailureEvent& b) {
+                    return a.timestamp < b.timestamp;
+                    });
+            }
+        }
+
+        Save();
 #endif
 
         return RACK_OK;
@@ -99,15 +225,6 @@ namespace failure::log {
 
     void LogCollector::Stop()
     {
-#ifndef TOOL_MODE
-        running_.store(false, std::memory_order_release);
-        for (auto& t : workerThreads_) {
-            if (t.joinable()) {
-                t.join();
-            }
-        }
-        workerThreads_.clear();
-#endif
         if (ofs_.is_open()) {
             ofs_.flush();
             ofs_.close();
@@ -116,83 +233,63 @@ namespace failure::log {
 
     RackResult LogCollector::CreateReaders()
     {
-        std::ifstream ifs(input_);
+        std::ifstream ifs(FAILURE_MODE_FILE);
         if (!ifs.is_open()) {
-            LOG_ERROR << "failed to open input file: " << input_;
+            LOG_ERROR << "failed to open input file: " << FAILURE_MODE_FILE;
             return RACK_FAIL;
         }
-        
-        // 读取整个文件内容
-        std::string content((std::istreambuf_iterator<char>(ifs)),
-                           std::istreambuf_iterator<char>());
-        ifs.close();
-        
-        // 去除空白字符
-        content.erase(std::remove_if(content.begin(), content.end(), 
-                     [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }), 
-                     content.end());
-        
-        // 检查是否是数组
-        if (content.empty() || content[0] != '[' || content.back() != ']') {
-            LOG_ERROR << "failure mode file must be an array";
+        Json::CharReaderBuilder builder;
+        Json::Value items(Json::arrayValue);
+        std::string err;
+        if (!Json::parseFromStream(builder, ifs, &items, &err)) {
+            LOG_ERROR << "failed to parse json: " << err;
             return RACK_FAIL;
         }
-        
-        // 提取数组内容
-        std::string arrayContent = content.substr(1, content.length() - 2);
-        
-        // 解析数组中的每个对象
-        std::vector<std::string> items;
-        int depth = 0;
-        size_t start = 0;
-        
-        for (size_t i = 0; i < arrayContent.size(); i++) {
-            if (arrayContent[i] == '{') {
-                if (depth == 0) {
-                    start = i;
-                }
-                depth++;
-            } else if (arrayContent[i] == '}') {
-                depth--;
-                if (depth == 0) {
-                    items.push_back(arrayContent.substr(start, i - start + 1));
+
+        std::vector<FailureMode> modes;
+        modes.reserve(items.size());
+        for (const Json::Value& item : items) {
+            FailureMode mode = FailureMode::FromJson(item);
+            auto it = customizedLogPath_.find(mode.component);
+            if (it != customizedLogPath_.end()) {
+                mode.dataSource.pathCells.clear();
+                for (const PathCell& pathCell : it->second) {
+                    mode.dataSource.pathCells.push_back(pathCell);
                 }
             }
+            modes.push_back(mode);
         }
 
         std::unordered_map<std::string, std::shared_ptr<LogReader>> dataSourceReaderMap;
-        for (const std::string& itemStr : items) {
-            FailureMode mode = FailureMode::FromJson(itemStr);
-            if (mode.dataSource.option == DataSourceOption::UNKNOWN) {
-                continue;
-            }
-            for (const std::string& path : mode.dataSource.paths) {
-                std::filesystem::path p = path;
-                std::vector<std::string> logCells;
+        for (const FailureMode& mode : modes) {
+            for (const PathCell& pathCell : mode.dataSource.pathCells) {
+                std::filesystem::path p = pathCell.path;
+                std::vector<PathCell> fileCells;
                 if (mode.dataSource.option == DataSourceOption::USER) {
                     if (!std::filesystem::exists(p)) {
                         LOG_WARN << "file not found: " << p;
                         continue;
                     }
                     if (std::filesystem::is_regular_file(p)) {
-                        logCells.push_back(path);
+                        fileCells.push_back(pathCell);
                     }
                     else if (std::filesystem::is_directory(p)) {
                         for (const auto& entry : std::filesystem::directory_iterator(p)) {
                             if (entry.path().extension() == ".log") {
-                                logCells.push_back(entry.path().string());
+                                fileCells.emplace_back(pathCell.podId, entry.path().string());
                             }
                         }
                     }
                 }
                 else {
-                    logCells.push_back(path);
+                    fileCells.push_back(pathCell);
                 }
-                for (const std::string& logCell : logCells) {
-                    auto it = dataSourceReaderMap.find(logCell);
+                for (const PathCell& fileCell : fileCells) {
+                    std::string key = fileCell.podId.value_or("null") + " " + fileCell.path;
+                    auto it = dataSourceReaderMap.find(key);
                     if (it == dataSourceReaderMap.end()) {
-                        auto reader = std::make_shared<LogReader>(mode.dataSource.option, logCell, query_.startTime, query_.endTime);
-                        it = dataSourceReaderMap.emplace(logCell, std::move(reader)).first;
+                        auto reader = std::make_shared<LogReader>(mode.dataSource.option, fileCell, query_.startTime, query_.endTime);
+                        it = dataSourceReaderMap.emplace(key, std::move(reader)).first;
                     }
                     it->second->AddFailureMode(mode);
                 }
@@ -240,17 +337,13 @@ namespace failure::log {
 
     RackResult LogCollector::ParseIOPath()
     {
-        // TODO: 支持可配置
-        input_ = "../data/failure_mode.json";
-        output_ = "../data/failure_event.json";
-
-        std::filesystem::path outFile = output_;
+        std::filesystem::path outFile = FAILURE_EVENT_FILE;
         if (std::filesystem::exists(outFile)) {
             std::filesystem::remove(outFile);
         }
-        ofs_.open(output_, std::ios::app);
+        ofs_.open(FAILURE_EVENT_FILE, std::ios::app);
         if (!ofs_.is_open()) {
-            LOG_ERROR << "failed to open output file: " << output_;
+            LOG_ERROR << "failed to open output file: " << FAILURE_EVENT_FILE;
             return RACK_FAIL;
         }
         static constexpr size_t kBufSize = 1 << 20;
@@ -280,19 +373,19 @@ namespace failure::log {
                     return RACK_OK;
                 }
                 if (!podSplitAndStrip) {
-                    customizedLogPath_[component].push_back(it->second);
+                    customizedLogPath_[component].emplace_back(std::nullopt, it->second);
                     return RACK_OK;
                 }
                 std::vector<std::string> items;
                 utils::Split(items, it->second, ',');
                 for (const auto& s : items) {
                     auto pos = s.find(':');
-                    customizedLogPath_[component].push_back(s.substr(pos + 1));
+                    customizedLogPath_[component].emplace_back(s.substr(0, pos), s.substr(pos + 1));
                 }
                 return RACK_OK;
             }
             if (it != argMap.end()) {
-                customizedLogPath_[component].push_back(it -> second);
+                customizedLogPath_[component].emplace_back(std::nullopt, it->second);
             }
             return RACK_OK;
             };
@@ -303,7 +396,7 @@ namespace failure::log {
         if (HandleLogPath("urmacore_log_path", /*podRequired=*/false, /*podSplitAndStrip=*/false) != RACK_OK) return RACK_FAIL;
         if (HandleLogPath("libudma_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
         if (HandleLogPath("udmacore_log_path", /*podRequired=*/false, /*podSplitAndStrip=*/false) != RACK_OK) return RACK_FAIL;
-    
+
         return RACK_OK;
     }
 
@@ -331,34 +424,39 @@ namespace failure::log {
             LOG_ERROR << "invalid argument end_time: " << it->second;
             return RACK_FAIL;
         }
-        query_.endTime = *endTime;
+        query_.endTime = *endTime + 999999LL;
 
         if ((it = argMap.find("event_type")) != argMap.end()) {
             std::vector<std::string> eventTypes;
             utils::Split(eventTypes, it->second, ',');
             for (const std::string& eventType : eventTypes) {
-                query_.eventTypes.push_back(EventTypeOptionFromString(eventType));
+                auto eventTypeOpt = EventTypeOptionFromString(eventType);
+                if (!eventTypeOpt) {
+                    LOG_ERROR << "invalid argument event_type: " << eventType;
+                    return RACK_FAIL;
+                }
+                query_.eventTypes.insert(*eventTypeOpt);
             }
         }
         if ((it = argMap.find("pod_id")) != argMap.end()) {
             std::vector<std::string> podIds;
             utils::Split(podIds, it->second, ',');
             for (const std::string& podId : podIds) {
-                query_.podIds.push_back(podId);
+                query_.podIds.insert(podId);
             }
         }
         if ((it = argMap.find("local_eid")) != argMap.end()) {
             std::vector<std::string> localEids;
             utils::Split(localEids, it->second, ',');
             for (const std::string& localEid : localEids) {
-                query_.localEids.push_back(localEid);
+                query_.localEids.insert(localEid);
             }
         }
         if ((it = argMap.find("jetty_id")) != argMap.end()) {
             std::vector<std::string> jettyIds;
             utils::Split(jettyIds, it->second, ',');
             for (const std::string& jettyId : jettyIds) {
-                query_.jettyIds.push_back(jettyId);
+                query_.jettyIds.insert(jettyId);
             }
         }
 
@@ -367,15 +465,14 @@ namespace failure::log {
 
     void LogCollector::Save()
     {
-        ofs_ << "[\n";
-        bool first = true;
-        for (const FailureEvent& event : events_) {
-            if (!first) {
-                ofs_ << ",\n";
-            }
-            ofs_ << "    " << event.ToJson();
-            first = false;
+        Json::Value j(Json::objectValue);
+        j["events"] = Json::Value(Json::arrayValue);
+        for (const FailureMetadata& metadata : metadata_) {
+            j["events"].append(metadata.ToJson());
         }
-        ofs_ << "\n]";
+        Json::StreamWriterBuilder builder;
+        builder["indentation"] = "  ";
+        std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+        writer->write(j, &ofs_);
     }
 }

@@ -1,232 +1,152 @@
 #include "failure_def.h"
-#include <charconv>
-#include <sstream>
+
 #include "utils.h"
-#include <algorithm>
 
 namespace failure {
-    // 简单的 JSON 值提取辅助函数
-    static std::string ExtractJsonValue(const std::string& json, const std::string& key) {
-        std::string searchKey = "\"" + key + "\"";
-        size_t pos = json.find(searchKey);
-        if (pos == std::string::npos) {
-            return "";
-        }
-        
-        pos = json.find(':', pos);
-        if (pos == std::string::npos) {
-            return "";
-        }
-        pos++;
-        
-        // 跳过空白字符
-        while (pos < json.size() && (json[pos] == ' ' || json[pos] == '\t' || json[pos] == '\n' || json[pos] == '\r')) {
-            pos++;
-        }
-        
-        if (pos >= json.size()) {
-            return "";
-        }
-        
-        // 字符串值
-        if (json[pos] == '"') {
-            pos++;
-            size_t end = json.find('"', pos);
-            while (end != std::string::npos && json[end-1] == '\\') {
-                end = json.find('"', end + 1);
-            }
-            if (end == std::string::npos) {
-                return "";
-            }
-            return json.substr(pos, end - pos);
-        }
-        // 布尔值
-        else if (json[pos] == 't' || json[pos] == 'f') {
-            size_t end = json.find_first_of(",}]", pos);
-            if (end == std::string::npos) {
-                return json.substr(pos);
-            }
-            return json.substr(pos, end - pos);
-        }
-        // 数组
-        else if (json[pos] == '[') {
-            int depth = 1;
-            size_t end = pos + 1;
-            while (end < json.size() && depth > 0) {
-                if (json[end] == '[') depth++;
-                else if (json[end] == ']') depth--;
-                end++;
-            }
-            return json.substr(pos, end - pos);
-        }
-        
-        return "";
-    }
-    
-    static bool ExtractJsonBool(const std::string& json, const std::string& key, bool defaultValue) {
-        std::string value = ExtractJsonValue(json, key);
-        if (value.empty()) {
-            return defaultValue;
-        }
-        return value == "true";
-    }
-    
-    static std::vector<std::string> ExtractJsonArray(const std::string& json, const std::string& key) {
-        std::string arrayStr = ExtractJsonValue(json, key);
-        std::vector<std::string> result;
-        
-        if (arrayStr.empty() || arrayStr[0] != '[') {
-            return result;
-        }
-        
-        size_t pos = 1;
-        while (pos < arrayStr.size()) {
-            // 跳过空白字符
-            while (pos < arrayStr.size() && (arrayStr[pos] == ' ' || arrayStr[pos] == '\t' || arrayStr[pos] == '\n' || arrayStr[pos] == '\r' || arrayStr[pos] == ',')) {
-                pos++;
-            }
-            
-            if (pos >= arrayStr.size() || arrayStr[pos] == ']') {
-                break;
-            }
-            
-            if (arrayStr[pos] == '"') {
-                pos++;
-                size_t end = arrayStr.find('"', pos);
-                while (end != std::string::npos && arrayStr[end-1] == '\\') {
-                    end = arrayStr.find('"', end + 1);
-                }
-                if (end != std::string::npos) {
-                    result.push_back(arrayStr.substr(pos, end - pos));
-                    pos = end + 1;
-                } else {
-                    break;
-                }
-            } else {
-                break;
-            }
-        }
-        
-        return result;
-    }
-    
-    // 转义 JSON 字符串
-    static std::string EscapeJsonString(const std::string& str) {
-        std::string result;
-        result.reserve(str.size() * 1.2);
-        
-        for (char c : str) {
-            switch (c) {
-                case '"': result += "\\\""; break;
-                case '\\': result += "\\\\"; break;
-                case '\b': result += "\\b"; break;
-                case '\f': result += "\\f"; break;
-                case '\n': result += "\\n"; break;
-                case '\r': result += "\\r"; break;
-                case '\t': result += "\\t"; break;
-                default:
-                    if (c < 0x20) {
-                        char buf[7];
-                        snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
-                        result += buf;
-                    } else {
-                        result += c;
-                    }
-                    break;
-            }
-        }
-        
-        return result;
-    }
-
-    bool FailureEventQuery::Match(const FailureEvent& event) const {
-        if(startTime && event.timestamp < startTime) {
+    bool FailureEventQuery::Match(const FailureMetadata& metadata, bool podMode) const
+    {
+        if (!eventTypes.empty() && eventTypes.find(metadata.eventType) == eventTypes.end()) {
             return false;
         }
-        if(endTime && event.timestamp > endTime) {
+        if (podMode && !podIds.empty() && metadata.podId && podIds.find(*metadata.podId) == podIds.end()) {
+            return false;
+        }
+        if (!localEids.empty() && localEids.find(metadata.localEid) == localEids.end()) {
+            return false;
+        }
+        if (!jettyIds.empty() && jettyIds.find(metadata.localJettyId) == jettyIds.end()) {
             return false;
         }
         return true;
     }
-    DataSourceOption DataSourceOptionFromString(const std::string& str) {
-        if(str.empty()) {
-            return DataSourceOption::UNKNOWN;
-        }else if(str == "dmesg") {
-            return DataSourceOption::KERNEL;
-        }else {
-            return DataSourceOption::USER;
-        }
-    }
-    EventTypeOption EventTypeOptionFromString(const std::string& str) {
 
-        if(str == "bind") {
+    std::optional<EventTypeOption> EventTypeOptionFromString(const std::string& str)
+    {
+        if (str == "bind") {
             return EventTypeOption::BIND;
-        }else if(str == "unbind") {
+        }
+        else if (str == "unbind") {
             return EventTypeOption::UNBIND;
-        }else if(str == "post") {
+        }
+        else if (str == "post") {
             return EventTypeOption::POST;
-        }else {
-            return EventTypeOption::UNKNOWN;
+        }
+        else {
+            return std::nullopt;
         }
     }
-    FailureMode FailureMode::FromJson(const std::string& jsonStr) {
+
+    std::string EventTypeOptionToString(EventTypeOption opt)
+    {
+        switch (opt) {
+        case EventTypeOption::BIND: return "bind";
+        case EventTypeOption::POST: return "post";
+        case EventTypeOption::UNBIND: return "unbind";
+        default: return "unknown";
+        }
+    }
+
+    FailureMode FailureMode::FromJson(const Json::Value& j)
+    {
         FailureMode mode;
-        mode.component = ExtractJsonValue(jsonStr, "component");
-        mode.version = ExtractJsonValue(jsonStr, "version");
-        mode.isMultiline = ExtractJsonBool(jsonStr, "is_multiline", false);
-        mode.manifest = ExtractJsonValue(jsonStr, "manifest");
-        
-        std::vector<std::string> paths = ExtractJsonArray(jsonStr, "log_path");
-        if (paths.empty()) {
-            std::string singlePath = ExtractJsonValue(jsonStr, "log_path");
-            if (!singlePath.empty()) {
-                paths.push_back(singlePath);
-            }
+        mode.component = j["component"].asString();
+        mode.version = j["version"].asString();
+        mode.isMultiline = j["is_multiline"].asBool();
+        mode.manifest = j["manifest"].asString();
+        std::vector<PathCell> pathCells = {
+            { std::nullopt, j["log_path"].asString() }
+        };
+        DataSourceOption opt;
+        if (mode.component == "hardware" || mode.component == "urmacore" || mode.component == "udmacore") {
+            opt = DataSourceOption::KERNEL;
         }
-        
-        DataSourceOption opt = DataSourceOption::UNKNOWN;
-        if (!paths.empty()) {
-            opt = DataSourceOptionFromString(paths[0]);
+        else {
+            opt = DataSourceOption::USER;
         }
-        mode.dataSource = { opt, std::move(paths)};
-        
+        mode.dataSource = { opt, std::move(pathCells) };
         return mode;
     }
-    
-    std::string FailureEvent::ToJson() const {
-        std::ostringstream oss;
-        oss << "{";
-        
-        // time 字段
-        oss << "\"time\": ";
-        if(auto time = utils::TimestampToDatetimeStr(timestamp)){
-            oss << "\"" << EscapeJsonString(*time) << "\"";
-        } else {
-            oss << "\"unknown\"";
+
+    Json::Value FailureEvent::ToJson() const
+    {
+        Json::Value j(Json::objectValue);
+        if (auto time = utils::TimestampToDatetimeStr(timestamp)) {
+            j["time"] = *time;
         }
-        
-        // component 字段
-        oss << ", \"component\": \"" << EscapeJsonString(component) << "\"";
-        
-        // path 字段
-        oss << ", \"path\": \"" << EscapeJsonString(path) << "\"";
-        
-        // text 字段
-        oss << ", \"text\": \"" << EscapeJsonString(text) << "\"";
-        
-        // attributes 字段
-        oss << ", \"attributes\": {";
-        bool first = true;
-        for (const auto& [key, value] : attributes) {
-            if (!first) {
-                oss << ", ";
-            }
-            oss << "\"" << EscapeJsonString(key) << "\": \"" << EscapeJsonString(value) << "\"";
-            first = false;
+        else {
+            j["time"] = Json::nullValue;
         }
-        oss << "}";
-        
-        oss << "}";
-        return oss.str();
+        j["component"] = component;
+        j["path"] = pathCell.path;
+        j["text"] = text;
+        j["attributes"] = Json::Value(Json::objectValue);
+        if (attributes.find("function_name") != attributes.end()) {
+            j["attributes"]["function_name"] = attributes.at("function_name");
+        }
+        if (attributes.find("local_eid") != attributes.end()) {
+            j["attributes"]["local_eid"] = attributes.at("local_eid");
+        }
+        if (attributes.find("local_jetty_id") != attributes.end()) {
+            j["attributes"]["local_jetty_id"] = attributes.at("local_jetty_id");
+        }
+        if (attributes.find("remote_eid") != attributes.end()) {
+            j["attributes"]["remote_eid"] = attributes.at("remote_eid");
+        }
+        if (attributes.find("remote_jetty_id") != attributes.end()) {
+            j["attributes"]["remote_jetty_id"] = attributes.at("remote_jetty_id");
+        }
+        return j;
+    }
+
+    Json::Value FailureMetadata::ToJson() const
+    {
+        Json::Value j(Json::objectValue);
+        j["event_type"] = EventTypeOptionToString(eventType);
+        if (podId) {
+            j["pod_id"] = *podId;
+        }
+        else {
+            j["pod_id"] = Json::nullValue;
+        }
+        j["program_name"] = programName;
+        j["proc_id"] = procId;
+        if (auto time = utils::TimestampToDatetimeStr(timestamp)) {
+            j["time"] = *time;
+        }
+        else {
+            j["time"] = Json::nullValue;
+        }
+        j["local_eid"] = localEid;
+        j["local_jetty_id"] = localJettyId;
+        if (remoteEid) {
+            j["remote_eid"] = *remoteEid;
+        }
+        else {
+            j["remote_eid"] = Json::nullValue;
+        }
+        if (remoteJettyId) {
+            j["remote_jetty_id"] = *remoteJettyId;
+        }
+        else {
+            j["remote_jetty_id"] = Json::nullValue;
+        }
+        j["text"] = text;
+        if (role) {
+            j["role"] = *role;
+        }
+        else {
+            j["role"] = Json::nullValue;
+        }
+        j["logs"] = Json::Value(Json::arrayValue);
+        for (const FailureEvent& event : events) {
+            j["logs"].append(event.ToJson());
+        }
+        return j;
+    }
+
+    PathCell::PathCell(const std::optional<std::string>& podId, const std::string& path)
+        : podId(podId)
+        , path(path)
+    {
     }
 }
