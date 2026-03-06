@@ -117,28 +117,52 @@ namespace failure::log {
     RackResult LogCollector::CreateReaders()
     {
         std::ifstream ifs(input_);
-        nlohmann::json items;
-        try {
-            ifs >> items;
-        }
-        catch (const nlohmann::json::parse_error& e) {
-            LOG_ERROR << "json parse error: " << e.what();
+        if (!ifs.is_open()) {
+            LOG_ERROR << "failed to open input file: " << input_;
             return RACK_FAIL;
         }
-        if (!items.is_array()) {
+        
+        // 读取整个文件内容
+        std::string content((std::istreambuf_iterator<char>(ifs)),
+                           std::istreambuf_iterator<char>());
+        ifs.close();
+        
+        // 去除空白字符
+        content.erase(std::remove_if(content.begin(), content.end(), 
+                     [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }), 
+                     content.end());
+        
+        // 检查是否是数组
+        if (content.empty() || content[0] != '[' || content.back() != ']') {
             LOG_ERROR << "failure mode file must be an array";
             return RACK_FAIL;
         }
-
-        for (auto& item : items) {
-            if (customizedLogPath_.find(item.at("component")) != customizedLogPath_.end()) {
-                item.at("log_path") = customizedLogPath_[item.at("component")];
+        
+        // 提取数组内容
+        std::string arrayContent = content.substr(1, content.length() - 2);
+        
+        // 解析数组中的每个对象
+        std::vector<std::string> items;
+        int depth = 0;
+        size_t start = 0;
+        
+        for (size_t i = 0; i < arrayContent.size(); i++) {
+            if (arrayContent[i] == '{') {
+                if (depth == 0) {
+                    start = i;
+                }
+                depth++;
+            } else if (arrayContent[i] == '}') {
+                depth--;
+                if (depth == 0) {
+                    items.push_back(arrayContent.substr(start, i - start + 1));
+                }
             }
         }
 
         std::unordered_map<std::string, std::shared_ptr<LogReader>> dataSourceReaderMap;
-        for (const auto& item : items) {
-            FailureMode mode = FailureMode::FromJson(item);
+        for (const std::string& itemStr : items) {
+            FailureMode mode = FailureMode::FromJson(itemStr);
             if (mode.dataSource.option == DataSourceOption::UNKNOWN) {
                 continue;
             }
@@ -343,10 +367,15 @@ namespace failure::log {
 
     void LogCollector::Save()
     {
-        nlohmann::json json = nlohmann::json::array();
+        ofs_ << "[\n";
+        bool first = true;
         for (const FailureEvent& event : events_) {
-            json += event.ToJson();
+            if (!first) {
+                ofs_ << ",\n";
+            }
+            ofs_ << "    " << event.ToJson();
+            first = false;
         }
-        ofs_ << json.dump(4);
+        ofs_ << "\n]";
     }
 }

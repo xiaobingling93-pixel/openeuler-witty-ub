@@ -1,7 +1,7 @@
 #ifndef NODE_DATA_DEF_H
 #define NODE_DATA_DEF_H
 #include <iostream>
-#include <nlohmann/json.hpp>
+#include <json/json.h>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -45,7 +45,7 @@ string ChipType2Str(ChipType chipType);
 DieState Str2DieState(std::string dieState);
 string DieState2Str(DieState dieState);
 UbCState Str2UbCState(std::string ubCState);
-string UbcState2Str(UbCState ubcState);
+string UbcState2Str(UbCState ubCState);
 PortState Str2PortState(std::string portState);
 string PortState2Str(PortState portState);
 template <typename T> string Vector2Str(vector<T> const &values) {
@@ -129,8 +129,8 @@ struct UbController : public ObjFormatter {
     return data_map;
   }
 };
-  inline void to_json(nlohmann::json &j, const UbController &u) {
-    j = nlohmann::json{{"primary_cna", u.primaryCna}};
+  inline void to_json(Json::Value &j, const UbController &u) {
+    j["primary_cna"] = u.primaryCna;
   }
   struct Port : public ObjFormatter {
     uint32_t portId;
@@ -170,21 +170,22 @@ struct UbController : public ObjFormatter {
           remoteSlotId ? to_string(remoteSlotId.value()) : "-";
       data_map["remoteUbpuId"] =
           remoteUbpuId ? to_string(remoteUbpuId.value()) : "-";
-      data_map["remoteIouId"] =
+      data_map["remoteIiId"] =
           remoteIouId ? to_string(remoteIouId.value()) : "-";
       return data_map;
     }
   };
-  inline void to_json(nlohmann::json &j, const Port &p) {
-    j = nlohmann::json{{"port_id", p.portId}, {"primary_cna", p.primaryCna}};
+  inline void to_json(Json::Value &j, const Port &p) {
+    j["port_id"] = static_cast<Json::UInt>(p.portId);
+    j["primary_cna"] = p.primaryCna;
     if(p.remotePortId.has_value())
-      j["remote_port_id"] = p.remotePortId.value();
+      j["remote_port_id"] = static_cast<Json::UInt>(p.remotePortId.value());
     if(p.remoteSlotId.has_value())
-      j["remote_slot_id"] = p.remoteSlotId.value();
+      j["remote_slot_id"] = static_cast<Json::UInt>(p.remoteSlotId.value());
     if(p.remoteUbpuId.has_value())
-      j["remote_ubpu_id"] = p.remoteUbpuId.value();
+      j["remote_ubpu_id"] = static_cast<Json::UInt>(p.remoteUbpuId.value());
     if(p.remoteIouId.has_value())
-      j["remote_iou_id"] = p.remoteIouId.value();
+      j["remote_iou_id"] = static_cast<Json::UInt>(p.remoteIouId.value());
   };
 
 void DataMapToObj(unordered_map<string, string> data_map, Node &obj);

@@ -1,7 +1,7 @@
 #ifndef URMA_DATA_DEF_H_
-#define URMA_DATA_DEF_H
+#define URMA_DATA_DEF_H_
 #include <iostream>
-#include <nlohmann/json.hpp>
+#include <json/json.h>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -30,27 +30,21 @@ struct URMADevice{
     std::string devEid;
     URMADevice(std::string devEid):devEid(devEid) {}
 };
-inline void to_json(nlohmann::json& j, const Pod& p) {
-    j = nlohmann::json{
-        {"pod_id", p.podId}
-    };
+inline void to_json(Json::Value& j, const Pod& p) {
+    j["pod_id"] = p.podId;
 }
 
-inline void to_json(nlohmann::json& j, const Jetty& y) {
-    j = nlohmann::json{
-        {"local_jetty_id", y.localJettyId},
-        {"local_eid", y.localDevEid},
-        {"remote_jetty_id", y.remoteJettyId},
-        {"remote_dev_id", y.remoteDevId}
-    };
+inline void to_json(Json::Value& j, const Jetty& y) {
+    j["local_jetty_id"] = y.localJettyId;
+    j["local_eid"] = y.localDevEid;
+    j["remote_jetty_id"] = y.remoteJettyId;
+    j["remote_dev_id"] = y.remoteDevId;
     if(y.podId.has_value()){
         j["pod_id"] = y.podId.value();
     }
 }
-inline void to_json(nlohmann::json& j, const URMADevice& y) {
-    j = nlohmann::json{
-        {"device_id", y.devEid}
-    };
+inline void to_json(Json::Value& j, const URMADevice& y) {
+    j["device_id"] = y.devEid;
 }
 } // namespace topology::urma
 #endif // URMA_DATA_DEF_H_
