@@ -72,6 +72,7 @@ int main(int argc, char* argv[])
     LOG_DEBUG << "Start InitDependencies";
     InitDependencies();
     LOG_DEBUG << "Start analyze parameters";
+    g_rackContext.CreateWittyDir();
     g_rackContext.ParseArgs(argc, argv);
     RegisterModules();
     CreateModules();

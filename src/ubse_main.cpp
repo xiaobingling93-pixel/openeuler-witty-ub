@@ -41,13 +41,15 @@ void RegisterModules(string role)
     if (role == "analyzer") {
         g_rackContext.RegisterModule<NodeGlobalCollectorModule>();
         //g_rackContext.RegisterModule<MemGlobalCollectorModule>();
-    } else if (role == "collector") {
+    }
+    else if (role == "collector") {
         g_rackContext.RegisterModule<LcneModule>();
         //g_rackContext.RegisterModule<ObmmModule>();
         g_rackContext.RegisterModule<NodeLocalCollectorModule>();
         //g_rackContext.RegisterModule<MemLocalCollectorModule>();
         g_rackContext.RegisterModule<LogLocalCollectorModule>();
-    } else {
+    }
+    else {
         std::cerr << "RegisterModules-Error: role " << role << " not supported" << std::endl;
     }
 }
@@ -68,27 +70,36 @@ void InitDependencies()
 void CreateModules()
 {
     std::vector<std::type_index> sortedModules = g_rackContext.GetSortedModules();
-    for (auto type: sortedModules) {
+    for (auto type : sortedModules) {
         LOG_INFO << "UbseContext::CreateModules: Creating module " << type.name();
         if (type == typeid(DatabaseModule)) {
             g_rackContext.InitModule<DatabaseModule>(RackModule::CreateModule<DatabaseModule>());
-        } else if (type == typeid(NodeLocalCollectorModule)) {
+        }
+        else if (type == typeid(NodeLocalCollectorModule)) {
             g_rackContext.InitModule<NodeLocalCollectorModule>(RackModule::CreateModule<NodeLocalCollectorModule>());
-        } else if (type == typeid(NodeGlobalCollectorModule)) {
+        }
+        else if (type == typeid(NodeGlobalCollectorModule)) {
             g_rackContext.InitModule<NodeGlobalCollectorModule>(RackModule::CreateModule<NodeGlobalCollectorModule>());
-        } else if (type == typeid(LcneModule)) {
+        }
+        else if (type == typeid(LcneModule)) {
             g_rackContext.InitModule<LcneModule>(RackModule::CreateModule<LcneModule>());
-        } else if (type == typeid(ObmmModule)) {
+        }
+        else if (type == typeid(ObmmModule)) {
             g_rackContext.InitModule<ObmmModule>(RackModule::CreateModule<ObmmModule>());
-        } else if (type == typeid(MemLocalCollectorModule)) {
+        }
+        else if (type == typeid(MemLocalCollectorModule)) {
             g_rackContext.InitModule<MemLocalCollectorModule>(RackModule::CreateModule<MemLocalCollectorModule>());
-        } else if (type == typeid(MemGlobalCollectorModule)) {
+        }
+        else if (type == typeid(MemGlobalCollectorModule)) {
             g_rackContext.InitModule<MemGlobalCollectorModule>(RackModule::CreateModule<MemGlobalCollectorModule>());
-        } else if (type == typeid(LogLocalCollectorModule)) {
+        }
+        else if (type == typeid(LogLocalCollectorModule)) {
             g_rackContext.InitModule<LogLocalCollectorModule>(RackModule::CreateModule<LogLocalCollectorModule>());
-        } else if (type == typeid(rack::com::HttpModule)) {
+        }
+        else if (type == typeid(rack::com::HttpModule)) {
             g_rackContext.InitModule<rack::com::HttpModule>(RackModule::CreateModule<rack::com::HttpModule>());
-        } else {
+        }
+        else {
             std::cerr << "CreateModule-Error: module " << type.name() << " not defined" << std::endl;
         }
     }
@@ -111,7 +122,7 @@ void UnInitializeAndStopModules()
         }
     }
 }
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     //Init log first
     rack::logger::init(argv[0]);
@@ -119,6 +130,7 @@ int main(int argc, char *argv[])
     // For all possible modules, add the dependencies as shown below
     InitDependencies();
     LOG_DEBUG << "Start analyze parameters";
+    g_rackContext.CreateWittyDir();
     g_rackContext.ParseArgs(argc, argv);
     string role = g_rackContext.GetRole();
     LOG_INFO << "Start Witty-UB, role is " << role;

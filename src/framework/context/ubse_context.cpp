@@ -19,12 +19,26 @@
 #include <thread>
 #include <map>
 #include <set>
+#include <filesystem>
 #include "rack_error.h"
 #include "rack_module.h"
 #include "ubse_context.h"
 #include "logger.h"
 
 namespace ubse::context {
+    constexpr const char* WITTY_DIR = "/var/witty-ub";
+
+    RackResult UbseContext::CreateWittyDir()
+    {
+        if (!std::filesystem::exists(WITTY_DIR)) {
+            if (!std::filesystem::create_directory(WITTY_DIR)) {
+                LOG_ERROR << "UbseContext::CreateWittyDir-Error: failed to create witty log directory: " << WITTY_DIR;
+                return RACK_FAIL;
+            }
+        }
+        return RACK_OK;
+    }
+
     RackResult UbseContext::ParseArgs(int argc, char* argv[]) {
         for (int i = 1; i < argc; i++) {
             std::string arg = argv[i];
