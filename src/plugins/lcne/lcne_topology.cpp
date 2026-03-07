@@ -53,6 +53,18 @@ namespace lcne::topo{
         convertPtrVectorToValueVector(ubcs);
     std::vector<topology::node::Port> ports_vec =
         convertPtrVectorToValueVector(ports);
+    
+    // Check if network mode is clos, if so, clear remote fields in ports
+    auto topoArgs = ubse::context::UbseContext::GetInstance().GetTopoToolsArgs();
+    if (topoArgs.network_mode == "clos") {
+      for (auto &port : ports_vec) {
+        port.remotePortId.reset();
+        port.remoteSlotId.reset();
+        port.remoteUbpuId.reset();
+        port.remoteIouId.reset();
+      }
+    }
+    
     auto ubcs_pair = jsonModule->GetJsonPair("iodie", ubcs_vec);
     auto port_pair = jsonModule->GetJsonPair("port", ports_vec);
     auto json_ret = jsonModule->WriteVectorsToFile(lcne::common::JSON_OUTPUT_FILE,
@@ -225,3 +237,4 @@ namespace lcne::topo{
   }
 
 } // namespace lcne::topo
+

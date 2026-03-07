@@ -47,4 +47,4 @@ add_executable(witty-ub-topo
     witty_ub_topo_main.cpp
 )
 target_include_directories(witty-ub-topo PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(witty-ub-topo PRIVATE database ubse_context topology lcne failure_log rack_http urma witty_json)
+target_link_libraries(witty-ub-topo PRIVATE ubse_context topology lcne rack_http urma witty_json)
