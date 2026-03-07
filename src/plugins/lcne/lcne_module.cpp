@@ -29,7 +29,7 @@ namespace lcne::module
     RackResult LcneModule::Start()
     {
 #ifdef ENABLE_DAEMON_FEATURE
-        if (auto notifyRet = lcneTopoligy->SubTopolgyChanges() != LCNE_SUCCESS)
+        if (auto notifyRet = lcneTopology->SubTopolgyChanges() != LCNE_SUCCESS)
         {
             LOG_ERROR << "LcneModule::Start-Error: failed to subscribe topology changes";
             return RACK_FAIL;

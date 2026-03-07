@@ -379,7 +379,7 @@ namespace ubse::context {
         {
             if (!has_umq_log_path)
             {
-                umq_log_path = "/var/log/message";
+                umq_log_path = "/var/log/messages";
             }
             path_map["normal"] = umq_log_path;
             LOG_DEBUG << "UbseConetext::ParseTopoToolsArgs-Debug: normal log path is " << umq_log_path;
