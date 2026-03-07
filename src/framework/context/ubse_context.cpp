@@ -55,6 +55,10 @@ namespace ubse::context {
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 value = argv[++i];
             }
+            else {
+                LOG_ERROR << "UbseContext::ParseArgs-Error: empty argument " << arg;
+                return RACK_FAIL;
+            }
             argMap[key] = value;
         }
         LOG_INFO << "UbseContext::ParseArgs-Args ";

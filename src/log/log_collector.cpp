@@ -39,13 +39,16 @@ namespace failure::log {
 
     RackResult LogCollector::Initialize()
     {
-        auto res = ParseArg();
-        if (res != RACK_OK) {
-            LOG_ERROR << "failed to create log readers";
+        RackResult res;
+        if ((res = InitIO()) != RACK_OK) {
+            LOG_ERROR << "failed to init io";
             return res;
         }
-        res = CreateReaders();
-        if (res != RACK_OK) {
+        if ((res = ParseArgs()) != RACK_OK) {
+            LOG_ERROR << "failed to parse args";
+            return res;
+        }
+        if ((res = CreateReaders()) != RACK_OK) {
             LOG_ERROR << "failed to create log readers";
             return res;
         }
@@ -243,6 +246,201 @@ namespace failure::log {
         }
     }
 
+    RackResult LogCollector::InitIO()
+    {
+        std::filesystem::path outFile = FAILURE_EVENT_FILE;
+        ofs_.open(FAILURE_EVENT_FILE, std::ios::out | std::ios::trunc);
+        if (!ofs_.is_open()) {
+            LOG_ERROR << "failed to open output file: " << FAILURE_EVENT_FILE;
+            return RACK_FAIL;
+        }
+        static constexpr size_t kBufSize = 1 << 20;
+        static char buf[kBufSize];
+        ofs_.rdbuf()->pubsetbuf(buf, kBufSize);
+        std::ios::sync_with_stdio(false);
+
+        return RACK_OK;
+    }
+
+    RackResult LogCollector::ParseArgs()
+    {
+        RackResult ret = RACK_OK;
+        auto& argMap = UbseContext::GetInstance().GetArgMap();
+        if ((ret = ParsePodMode(argMap)) != RACK_OK) {
+            return ret;
+        }
+        if ((ret = ParseLogPath(argMap)) != RACK_OK) {
+            return ret;
+        }
+        if ((ret = ParseQueryCondition(argMap)) != RACK_OK) {
+            return ret;
+        }
+        return RACK_OK;
+    }
+
+    RackResult LogCollector::ParsePodMode(const std::unordered_map<std::string, std::string>& argMap)
+    {
+        auto it = argMap.find("pod_mode");
+        if (it == argMap.end()) {
+            LOG_ERROR << "missing argument pod_mode";
+            return RACK_FAIL;
+        }
+        std::string_view pod_mode = it->second;
+        if (pod_mode != "on" && pod_mode != "off") {
+            LOG_ERROR << "invalid argument pod_mode: " << pod_mode << ", expected \"on\" or \"off\"";
+            return RACK_FAIL;
+        }
+        podMode_ = pod_mode == "on";
+        return RACK_OK;
+    }
+
+    RackResult LogCollector::ParseLogPath(const std::unordered_map<std::string, std::string>& argMap)
+    {
+        auto ComponentOf = [](const std::string& arg) -> std::string {
+            auto p = arg.find('_');
+            return (p == std::string::npos) ? arg : arg.substr(0, p);
+            };
+
+        auto HandleLogPath = [&](const std::string& arg, bool podRequired, bool podSplitAndStrip, bool expectedDir) -> RackResult {
+            const std::string component = ComponentOf(arg);
+            auto it = argMap.find(arg);
+            if (podMode_) {
+                if (podRequired && it == argMap.end()) {
+                    LOG_ERROR << "missing argument " << arg << ", required in pod mode";
+                    return RACK_FAIL;
+                }
+                if (it == argMap.end()) {
+                    return RACK_OK;
+                }
+                if (!podSplitAndStrip) {
+                    if (!IsValidPath(it->second, expectedDir) != RACK_OK) {
+                        LOG_ERROR << "invalid argument: " << arg;
+                        return RACK_FAIL;
+                    }
+                    customizedLogPath_[component].emplace_back(std::nullopt, it->second);
+                    return RACK_OK;
+                }
+                std::vector<std::string> entries;
+                utils::Split(entries, it->second, ',');
+                if (entries.empty()) {
+                    LOG_ERROR << "invalid argument " << arg << ": " << it->second << ", expected \"<pod_id1>:<path1>,<pod_id2>:<path2>,...\"";
+                    return RACK_FAIL;
+                }
+                for (const std::string& entry : entries) {
+                    auto pos = entry.find(':');
+                    if (pos == std::string::npos) {
+                        LOG_ERROR << "invalid argument " << arg << ": " << entry << ", expected \"<pod_id>:<path>\"";
+                        return RACK_FAIL;
+                    }
+                    const std::string& podId = entry.substr(0, pos);
+                    const std::string& path = entry.substr(pos + 1);
+                    if (!IsValidPodId(podId) || !IsValidPath(path, expectedDir)) {
+                        LOG_ERROR << "invalid argument: " << arg;
+                        return RACK_FAIL;
+                    }
+                    customizedLogPath_[component].emplace_back(podId, path);
+                    allowedPodIds_.insert(podId);
+                }
+                return RACK_OK;
+            }
+            if (it != argMap.end()) {
+                if (!IsValidPath(it->second, expectedDir) != RACK_OK) {
+                    LOG_ERROR << "invalid argument: " << arg;
+                    return RACK_FAIL;
+                }
+                customizedLogPath_[component].emplace_back(std::nullopt, it->second);
+            }
+            return RACK_OK;
+            };
+
+        if (HandleLogPath("ubsocket_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("umq_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/true) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("liburma_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/true) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("urmacore_log_path", /*podRequired=*/false, /*podSplitAndStrip=*/false, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("libudma_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("udmacore_log_path", /*podRequired=*/false, /*podSplitAndStrip=*/false, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
+
+        return RACK_OK;
+    }
+
+    RackResult LogCollector::ParseQueryCondition(const std::unordered_map<std::string, std::string>& argMap)
+    {
+        std::unordered_map<std::string, std::string>::const_iterator it;
+
+        if ((it = argMap.find("start_time")) == argMap.end()) {
+            LOG_ERROR << "missing argument start_time";
+            return RACK_FAIL;
+        }
+        auto startTime = utils::DatetimeStrToTimestamp(it->second);
+        if (!startTime) {
+            LOG_ERROR << "invalid argument start_time: " << it->second;
+            return RACK_FAIL;
+        }
+        query_.startTime = *startTime;
+
+        if ((it = argMap.find("end_time")) == argMap.end()) {
+            LOG_ERROR << "missing argument end_time";
+            return RACK_FAIL;
+        }
+        auto endTime = utils::DatetimeStrToTimestamp(it->second);
+        if (!endTime) {
+            LOG_ERROR << "invalid argument end_time: " << it->second;
+            return RACK_FAIL;
+        }
+        query_.endTime = *endTime + 999999LL;
+
+        if ((it = argMap.find("event_type")) != argMap.end()) {
+            std::vector<std::string> eventTypes;
+            utils::Split(eventTypes, it->second, ',');
+            if (eventTypes.empty()) {
+                LOG_ERROR << "empty argument event_type";
+                return RACK_FAIL;
+            }
+            for (const std::string& eventType : eventTypes) {
+                auto eventTypeOpt = EventTypeOptionFromString(eventType);
+                if (!eventTypeOpt) {
+                    LOG_ERROR << "invalid argument event_type: " << eventType;
+                    return RACK_FAIL;
+                }
+                query_.eventTypes.insert(*eventTypeOpt);
+            }
+        }
+        if ((it = argMap.find("pod_id")) != argMap.end()) {
+            if (!podMode_) {
+                LOG_ERROR << "unexpected arg pod_id in non pod mode";
+                return RACK_FAIL;
+            }
+            std::vector<std::string> podIds;
+            utils::Split(podIds, it->second, ',');
+            for (const std::string& podId : podIds) {
+                if (!IsValidPodId(podId)) {
+                    return RACK_FAIL;
+                }
+                if (allowedPodIds_.find(podId) == allowedPodIds_.end()) {
+                    LOG_ERROR << "pod id: " << podId << ", not provided in log path";
+                    return RACK_FAIL;
+                }
+                query_.podIds.insert(podId);
+            }
+        }
+        if ((it = argMap.find("local_eid")) != argMap.end()) {
+            std::vector<std::string> localEids;
+            utils::Split(localEids, it->second, ',');
+            for (const std::string& localEid : localEids) {
+                query_.localEids.insert(localEid);
+            }
+        }
+        if ((it = argMap.find("jetty_id")) != argMap.end()) {
+            std::vector<std::string> jettyIds;
+            utils::Split(jettyIds, it->second, ',');
+            for (const std::string& jettyId : jettyIds) {
+                query_.jettyIds.insert(jettyId);
+            }
+        }
+
+        return RACK_OK;
+    }
+
     RackResult LogCollector::CreateReaders()
     {
         std::ifstream ifs(FAILURE_MODE_FILE);
@@ -315,166 +513,6 @@ namespace failure::log {
         return RACK_OK;
     }
 
-    RackResult LogCollector::ParseArg()
-    {
-        RackResult ret = RACK_OK;
-        auto& argMap = UbseContext::GetInstance().GetArgMap();
-        if ((ret = ParsePodMode(argMap)) != RACK_OK) {
-            return ret;
-        }
-        if ((ret = ParseIOPath()) != RACK_OK) {
-            return ret;
-        }
-        if ((ret = ParseLogPath(argMap)) != RACK_OK) {
-            return ret;
-        }
-        if ((ret = ParseQueryCondition(argMap)) != RACK_OK) {
-            return ret;
-        }
-        return RACK_OK;
-    }
-
-    RackResult LogCollector::ParsePodMode(const std::unordered_map<std::string, std::string>& argMap)
-    {
-        auto it = argMap.find("pod_mode");
-        if (it == argMap.end()) {
-            LOG_ERROR << "missing argument pod_mode";
-            return RACK_FAIL;
-        }
-        if (it->second == "on") {
-            podMode_ = true;
-        }
-        return RACK_OK;
-    }
-
-    RackResult LogCollector::ParseIOPath()
-    {
-        std::filesystem::path outFile = FAILURE_EVENT_FILE;
-        if (std::filesystem::exists(outFile)) {
-            std::filesystem::remove(outFile);
-        }
-        ofs_.open(FAILURE_EVENT_FILE, std::ios::app);
-        if (!ofs_.is_open()) {
-            LOG_ERROR << "failed to open output file: " << FAILURE_EVENT_FILE;
-            return RACK_FAIL;
-        }
-        static constexpr size_t kBufSize = 1 << 20;
-        static char buf[kBufSize];
-        ofs_.rdbuf()->pubsetbuf(buf, kBufSize);
-        std::ios::sync_with_stdio(false);
-
-        return RACK_OK;
-    }
-
-    RackResult LogCollector::ParseLogPath(const std::unordered_map<std::string, std::string>& argMap)
-    {
-        auto ComponentOf = [](const std::string& arg) -> std::string {
-            auto p = arg.find('_');
-            return (p == std::string::npos) ? arg : arg.substr(0, p);
-            };
-
-        auto HandleLogPath = [&](const std::string& arg, bool podRequired, bool podSplitAndStrip) -> RackResult {
-            const std::string component = ComponentOf(arg);
-            auto it = argMap.find(arg);
-            if (podMode_) {
-                if (podRequired && it == argMap.end()) {
-                    LOG_ERROR << "missing argument " << arg << ", required in pod mode";
-                    return RACK_FAIL;
-                }
-                if (it == argMap.end()) {
-                    return RACK_OK;
-                }
-                if (!podSplitAndStrip) {
-                    customizedLogPath_[component].emplace_back(std::nullopt, it->second);
-                    return RACK_OK;
-                }
-                std::vector<std::string> items;
-                utils::Split(items, it->second, ',');
-                for (const auto& s : items) {
-                    auto pos = s.find(':');
-                    customizedLogPath_[component].emplace_back(s.substr(0, pos), s.substr(pos + 1));
-                }
-                return RACK_OK;
-            }
-            if (it != argMap.end()) {
-                customizedLogPath_[component].emplace_back(std::nullopt, it->second);
-            }
-            return RACK_OK;
-            };
-
-        if (HandleLogPath("ubsocket_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("umq_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("liburma_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("urmacore_log_path", /*podRequired=*/false, /*podSplitAndStrip=*/false) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("libudma_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("udmacore_log_path", /*podRequired=*/false, /*podSplitAndStrip=*/false) != RACK_OK) return RACK_FAIL;
-
-        return RACK_OK;
-    }
-
-    RackResult LogCollector::ParseQueryCondition(const std::unordered_map<std::string, std::string>& argMap)
-    {
-        std::unordered_map<std::string, std::string>::const_iterator it;
-
-        if ((it = argMap.find("start_time")) == argMap.end()) {
-            LOG_ERROR << "missing argument start_time";
-            return RACK_FAIL;
-        }
-        auto startTime = utils::DatetimeStrToTimestamp(it->second);
-        if (!startTime) {
-            LOG_ERROR << "invalid argument start_time: " << it->second;
-            return RACK_FAIL;
-        }
-        query_.startTime = *startTime;
-
-        if ((it = argMap.find("end_time")) == argMap.end()) {
-            LOG_ERROR << "missing argument end_time";
-            return RACK_FAIL;
-        }
-        auto endTime = utils::DatetimeStrToTimestamp(it->second);
-        if (!endTime) {
-            LOG_ERROR << "invalid argument end_time: " << it->second;
-            return RACK_FAIL;
-        }
-        query_.endTime = *endTime + 999999LL;
-
-        if ((it = argMap.find("event_type")) != argMap.end()) {
-            std::vector<std::string> eventTypes;
-            utils::Split(eventTypes, it->second, ',');
-            for (const std::string& eventType : eventTypes) {
-                auto eventTypeOpt = EventTypeOptionFromString(eventType);
-                if (!eventTypeOpt) {
-                    LOG_ERROR << "invalid argument event_type: " << eventType;
-                    return RACK_FAIL;
-                }
-                query_.eventTypes.insert(*eventTypeOpt);
-            }
-        }
-        if ((it = argMap.find("pod_id")) != argMap.end()) {
-            std::vector<std::string> podIds;
-            utils::Split(podIds, it->second, ',');
-            for (const std::string& podId : podIds) {
-                query_.podIds.insert(podId);
-            }
-        }
-        if ((it = argMap.find("local_eid")) != argMap.end()) {
-            std::vector<std::string> localEids;
-            utils::Split(localEids, it->second, ',');
-            for (const std::string& localEid : localEids) {
-                query_.localEids.insert(localEid);
-            }
-        }
-        if ((it = argMap.find("jetty_id")) != argMap.end()) {
-            std::vector<std::string> jettyIds;
-            utils::Split(jettyIds, it->second, ',');
-            for (const std::string& jettyId : jettyIds) {
-                query_.jettyIds.insert(jettyId);
-            }
-        }
-
-        return RACK_OK;
-    }
-
     void LogCollector::Save()
     {
         Json::Value j(Json::objectValue);
@@ -486,5 +524,56 @@ namespace failure::log {
         builder["indentation"] = "  ";
         std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
         writer->write(j, &ofs_);
+    }
+
+    bool LogCollector::IsValidPodId(const std::string& podId) const
+    {
+        if (podId.empty()) {
+            LOG_ERROR << "empty pod_id";
+            return false;
+        }
+        if (podId.size() > 253) {
+            LOG_ERROR << "invalid pod_id: " << podId << ", size limit 253 but got size" << podId.size();
+            return false;
+        }
+        for (size_t i = 0; i < podId.size(); ++i) {
+            char ch = podId[i];
+            bool isLowerAlnum = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9');
+            if (!isLowerAlnum && !(ch == '-' && i != 0 && i != podId.size() - 1)) {
+                LOG_ERROR << "invalid pod_id: " << podId << ", unexpected character: " << ch;
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool LogCollector::IsValidPath(const std::string& p, bool expectedDir) const
+    {
+        if (p.empty()) {
+            LOG_ERROR << "empty path";
+            return false;
+        }
+        std::filesystem::path path(p);
+        if (!path.is_absolute()) {
+            LOG_ERROR << "invalid path: " << p << ", expected absolute path";
+            return false;
+        }
+        if (!std::filesystem::exists(path)) {
+            LOG_ERROR << "path not found: " << p;
+            return false;
+        }
+        if (!expectedDir) {
+            if (!std::filesystem::is_regular_file(path)) {
+                LOG_ERROR << "invalid path: " << p << ", expected file but got directory";
+                return false;
+            }
+        }
+        else {
+            if (!std::filesystem::is_directory(path)) {
+                LOG_ERROR << "invalid path: " << p << ", expected directory but got file";
+                return false;
+            }
+        }
+        return true;
     }
 }

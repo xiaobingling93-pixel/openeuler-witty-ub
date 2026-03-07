@@ -73,10 +73,13 @@ int main(int argc, char* argv[])
     InitDependencies();
     LOG_DEBUG << "Start analyze parameters";
     g_rackContext.CreateWittyDir();
-    g_rackContext.ParseArgs(argc, argv);
+    RackResult ret = g_rackContext.ParseArgs(argc, argv);
+    if (ret != RACK_OK) {
+        return RACK_FAIL;
+    }
     RegisterModules();
     CreateModules();
-    RackResult ret = g_rackContext.Run(argc, argv);
+    ret = g_rackContext.Run(argc, argv);
     UnInitializeAndStopModules();
     rack::logger::shutdown();
     return 0;

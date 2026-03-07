@@ -29,17 +29,21 @@ namespace failure::log {
         void Stop();
 
     private:
-        RackResult CreateReaders();
-        RackResult ParseArg();
+        RackResult InitIO();
+        RackResult ParseArgs();
         RackResult ParsePodMode(const std::unordered_map<std::string, std::string>& argMap);
-        RackResult ParseIOPath();
         RackResult ParseLogPath(const std::unordered_map<std::string, std::string>& argMap);
         RackResult ParseQueryCondition(const std::unordered_map<std::string, std::string>& argMap);
+        RackResult CreateReaders();
         void Save();
+
+        bool IsValidPodId(const std::string& podId) const;
+        bool IsValidPath(const std::string& p, bool expectedDir) const;
 
     private:
         bool podMode_{ false };
         std::unordered_map<std::string, std::vector<PathCell>> customizedLogPath_;
+        std::unordered_set<std::string> allowedPodIds_;
         FailureEventQuery query_;
 
         std::atomic_bool running_{ false };
