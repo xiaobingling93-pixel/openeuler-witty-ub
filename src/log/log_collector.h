@@ -36,6 +36,7 @@ namespace failure::log {
         RackResult ParseLogPath(const std::unordered_map<std::string, std::string>& argMap);
         RackResult ParseQueryCondition(const std::unordered_map<std::string, std::string>& argMap);
         RackResult CreateReaders();
+        RackResult CorrelateEvents();
         void Save();
 
         bool IsValidPodId(const std::string& podId) const;

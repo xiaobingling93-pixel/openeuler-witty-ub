@@ -95,7 +95,7 @@ namespace failure::log {
                 }
             }
 
-                {
+            {
                 std::lock_guard<std::mutex> lk(eventsMapMutex_);
                 for (auto& [component, events] : localEventsMap) {
                     auto& dst = eventsMap_[component];
@@ -140,131 +140,7 @@ namespace failure::log {
         }
         workerThreads_.clear();
 
-        if (eventsMap_.find("umq") == eventsMap_.end()) {
-            LOG_INFO << "no umq events found";
-            return RACK_OK;
-        }
-        for (const FailureEvent& event : eventsMap_.at("umq")) {
-            if (event.attributes.at("alarm_level") != "error") {
-                continue;
-            }
-            FailureMetadata metadata;
-            auto it = umqFuncEventTypeMap.find(event.attributes.at("function_name"));
-            if (it == umqFuncEventTypeMap.end()) {
-                continue;
-            }
-            metadata.eventType = it->second;
-            if (metadata.eventType == EventTypeOption::POST) {
-                auto it = umqFuncRoleMap.find(event.attributes.at("function_name"));
-                if (it != umqFuncRoleMap.end()) {
-                    metadata.role = it->second;
-                }
-            }
-            metadata.podId = event.pathCell.podId;
-            metadata.programName = event.attributes.at("program_name");
-            metadata.procId = event.attributes.at("proc_id");
-            metadata.timestamp = event.timestamp;
-            metadata.text = event.text;
-            std::smatch match;
-            if (std::regex_search(event.attributes.at("content"), match, biEndRe)) {
-                metadata.localEid = match[1].str();
-                metadata.localJettyId = match[2].str();
-                metadata.remoteEid = match[3].str();
-                metadata.remoteJettyId = match[4].str();
-            }
-            else if (std::regex_search(event.attributes.at("content"), match, singleEndRe)) {
-                metadata.localEid = match[1].str();
-                metadata.localJettyId = match[2].str();
-            }
-
-            if (query_.Match(metadata, podMode_)) {
-                metadata_.push_back(metadata);
-            }
-        }
-        std::sort(metadata_.begin(), metadata_.end(), [](const FailureMetadata& a, const FailureMetadata& b) {
-            return a.timestamp < b.timestamp;
-            });
-
-        for (FailureMetadata& metadata : metadata_) {
-            int64_t timeWindow = 10 * 1000000LL;
-            int64_t startTime = 0;
-            int64_t endTime = 0;
-
-            for (auto& [component, events] : eventsMap_) {
-                if (component == "hardware") {
-                    continue;
-                }
-                else if (component == "ubsocket") {
-                    startTime = metadata.timestamp;
-                    endTime = metadata.timestamp + timeWindow;
-                }
-                else {
-                    startTime = metadata.timestamp - timeWindow;
-                    endTime = metadata.timestamp;
-                }
-
-                for (FailureEvent& event : events) {
-                    if (event.timestamp < startTime || event.timestamp > endTime) {
-                        continue;
-                    }
-                    if (podMode_ && event.pathCell.podId && metadata.podId && event.pathCell.podId != metadata.podId) {
-                        continue;
-                    }
-
-                    bool resourceMatch = false;
-                    if (component == "umq" || component == "liburma") {
-                        auto itProgramName = event.attributes.find("program_name");
-                        auto itProcId = event.attributes.find("proc_id");
-                        if (itProgramName != event.attributes.end() && itProcId != event.attributes.end() &&
-                            itProgramName->second == metadata.programName && itProcId->second == metadata.procId) {
-                            resourceMatch = true;
-                        }
-                    }
-                    if (component == "umq") {
-                        auto it = event.attributes.find("content");
-                        if (it != event.attributes.end()) {
-                            const std::string& content = it->second;
-                            std::string localEid, localJettyId;
-                            std::optional<std::string> remoteEid, remoteJettyId;
-                            std::smatch match;
-                            if (std::regex_search(content, match, biEndRe)) {
-                                localEid = match[1].str();
-                                localJettyId = match[2].str();
-                                remoteEid = match[3].str();
-                                remoteJettyId = match[4].str();
-                            }
-                            else if (std::regex_search(content, match, singleEndRe)) {
-                                localEid = match[1].str();
-                                localJettyId = match[2].str();
-                            }
-
-                            if (localEid == metadata.localEid && localJettyId == metadata.localJettyId && remoteEid == metadata.remoteEid && remoteJettyId == metadata.remoteJettyId) {
-                                resourceMatch = true;
-                                event.attributes["local_eid"] = localEid;
-                                event.attributes["local_jetty_id"] = localJettyId;
-                                if (remoteEid) {
-                                    event.attributes["remote_eid"] = *remoteEid;
-                                }
-                                if (remoteJettyId) {
-                                    event.attributes["remote_jetty_id"] = *remoteJettyId;
-                                }
-                            }
-                        }
-                    }
-                    if (component == "urmacore" || component == "udmacore" || component == "libudma" || component == "ubsocket") {
-                        resourceMatch = true;
-                    }
-
-                    if (resourceMatch) {
-                        metadata.events.push_back(event);
-                    }
-                }
-                std::sort(metadata.events.begin(), metadata.events.end(), [](const FailureEvent& a, const FailureEvent& b) {
-                    return a.timestamp < b.timestamp;
-                    });
-            }
-        }
-
+        CorrelateEvents();
         Save();
 #endif
 
@@ -566,6 +442,136 @@ namespace failure::log {
         for (auto& [_, reader] : dataSourceReaderMap) {
             readers_.push_back(std::move(reader));
         }
+        return RACK_OK;
+    }
+
+    RackResult LogCollector::CorrelateEvents()
+    {
+        if (eventsMap_.find("umq") == eventsMap_.end()) {
+            LOG_INFO << "no umq events found";
+            return RACK_OK;
+        }
+        for (const FailureEvent& event : eventsMap_.at("umq")) {
+            if (event.attributes.at("alarm_level") != "error") {
+                continue;
+            }
+            FailureMetadata metadata;
+            auto it = umqFuncEventTypeMap.find(event.attributes.at("function_name"));
+            if (it == umqFuncEventTypeMap.end()) {
+                continue;
+            }
+            metadata.eventType = it->second;
+            if (metadata.eventType == EventTypeOption::POST) {
+                auto it = umqFuncRoleMap.find(event.attributes.at("function_name"));
+                if (it != umqFuncRoleMap.end()) {
+                    metadata.role = it->second;
+                }
+            }
+            metadata.podId = event.pathCell.podId;
+            metadata.programName = event.attributes.at("program_name");
+            metadata.procId = event.attributes.at("proc_id");
+            metadata.timestamp = event.timestamp;
+            metadata.text = event.text;
+            std::smatch match;
+            if (std::regex_search(event.attributes.at("content"), match, biEndRe)) {
+                metadata.localEid = match[1].str();
+                metadata.localJettyId = match[2].str();
+                metadata.remoteEid = match[3].str();
+                metadata.remoteJettyId = match[4].str();
+            }
+            else if (std::regex_search(event.attributes.at("content"), match, singleEndRe)) {
+                metadata.localEid = match[1].str();
+                metadata.localJettyId = match[2].str();
+            }
+
+            if (query_.Match(metadata, podMode_)) {
+                metadata_.push_back(metadata);
+            }
+        }
+        std::sort(metadata_.begin(), metadata_.end(), [](const FailureMetadata& a, const FailureMetadata& b) {
+            return a.timestamp < b.timestamp;
+            });
+
+        for (FailureMetadata& metadata : metadata_) {
+            int64_t timeWindow = 10 * 1000000LL;
+            int64_t startTime = 0;
+            int64_t endTime = 0;
+
+            for (auto& [component, events] : eventsMap_) {
+                if (component == "hardware") {
+                    continue;
+                }
+                else if (component == "ubsocket") {
+                    startTime = metadata.timestamp;
+                    endTime = metadata.timestamp + timeWindow;
+                }
+                else {
+                    startTime = metadata.timestamp - timeWindow;
+                    endTime = metadata.timestamp;
+                }
+
+                for (FailureEvent& event : events) {
+                    if (event.timestamp < startTime || event.timestamp > endTime) {
+                        continue;
+                    }
+                    if (podMode_ && event.pathCell.podId && metadata.podId && event.pathCell.podId != metadata.podId) {
+                        continue;
+                    }
+
+                    bool resourceMatch = false;
+                    if (component == "umq" || component == "liburma") {
+                        auto itProgramName = event.attributes.find("program_name");
+                        auto itProcId = event.attributes.find("proc_id");
+                        if (itProgramName != event.attributes.end() && itProcId != event.attributes.end() &&
+                            itProgramName->second == metadata.programName && itProcId->second == metadata.procId) {
+                            resourceMatch = true;
+                        }
+                    }
+                    if (component == "umq") {
+                        auto it = event.attributes.find("content");
+                        if (it != event.attributes.end()) {
+                            const std::string& content = it->second;
+                            std::string localEid, localJettyId;
+                            std::optional<std::string> remoteEid, remoteJettyId;
+                            std::smatch match;
+                            if (std::regex_search(content, match, biEndRe)) {
+                                localEid = match[1].str();
+                                localJettyId = match[2].str();
+                                remoteEid = match[3].str();
+                                remoteJettyId = match[4].str();
+                            }
+                            else if (std::regex_search(content, match, singleEndRe)) {
+                                localEid = match[1].str();
+                                localJettyId = match[2].str();
+                            }
+
+                            if (localEid == metadata.localEid && localJettyId == metadata.localJettyId && remoteEid == metadata.remoteEid && remoteJettyId == metadata.remoteJettyId) {
+                                resourceMatch = true;
+                                event.attributes["local_eid"] = localEid;
+                                event.attributes["local_jetty_id"] = localJettyId;
+                                if (remoteEid) {
+                                    event.attributes["remote_eid"] = *remoteEid;
+                                }
+                                if (remoteJettyId) {
+                                    event.attributes["remote_jetty_id"] = *remoteJettyId;
+                                }
+                            }
+                        }
+                    }
+                    if (component == "urmacore" || component == "udmacore" || component == "libudma" || component == "ubsocket") {
+                        resourceMatch = true;
+                    }
+
+                    if (resourceMatch) {
+                        metadata.events.push_back(event);
+                    }
+                }
+                std::sort(metadata.events.begin(), metadata.events.end(), [](const FailureEvent& a, const FailureEvent& b) {
+                    return a.timestamp < b.timestamp;
+                    });
+            }
+        }
+
         return RACK_OK;
     }
 
