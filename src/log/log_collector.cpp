@@ -62,33 +62,67 @@ namespace failure::log {
     RackResult LogCollector::Start()
     {
         auto ReaderLoopOnce = [&](std::shared_ptr<LogReader> reader) {
+            std::unordered_map<std::string, std::vector<FailureEvent>> localEventsMap;
+            bool handleCreated = false;
             try {
                 reader->CreateHandle();
+                handleCreated = true;
+                while (true) {
+                    {
+                        std::lock_guard<std::mutex> lk(stateMutex_);
+                        if (!running_) {
+                            break;
+                        }
+                    }
+                    auto event = reader->ReadOnce();
+                    if (!event) {
+                        break;
+                    }
+                    localEventsMap[event->component].push_back(std::move(*event));
+                }
             }
             catch (const std::exception& e) {
-                LOG_ERROR << "failed to create handle: " << e.what();
+                LOG_ERROR << "reader loop failed: " << e.what();
                 return;
             }
 
-            while (running_.load(std::memory_order_acquire)) {
-                auto event = reader->ReadOnce();
-                if (!event) {
-                    break;
+            if (handleCreated) {
+                try {
+                    reader->DestroyHandle();
                 }
-                {
-                    std::lock_guard<std::mutex> lk(mutex_);
-                    eventsMap_[event->component].push_back(*event);
+                catch (const std::exception& e) {
+                    LOG_ERROR << "failed to destroy handle: " << e.what();
                 }
             }
 
-            reader->DestroyHandle();
+                {
+                std::lock_guard<std::mutex> lk(eventsMapMutex_);
+                for (auto& [component, events] : localEventsMap) {
+                    auto& dst = eventsMap_[component];
+                    dst.insert(dst.end(), std::make_move_iterator(events.begin()), std::make_move_iterator(events.end()));
+                }
+            }
             };
 
-        if (running_.load(std::memory_order_acquire)) {
-            return RACK_OK;
+        {
+            std::unique_lock<std::mutex> lk(stateMutex_);
+            stateCond_.wait(lk, [this]() { return !running_; });
+            running_ = true;
         }
-        running_.store(true, std::memory_order_release);
 
+        struct RunningGuard {
+            LogCollector* self;
+            ~RunningGuard()
+            {
+                {
+                    std::lock_guard<std::mutex> lk(self->stateMutex_);
+                    self->running_ = false;
+                }
+                self->stateCond_.notify_one();
+            }
+        }guard{ this };
+        eventsMap_.clear();
+        metadata_.clear();
         workerThreads_.clear();
         workerThreads_.reserve(readers_.size());
 
@@ -105,7 +139,6 @@ namespace failure::log {
             }
         }
         workerThreads_.clear();
-        running_.store(false, std::memory_order_release);
 
         if (eventsMap_.find("umq") == eventsMap_.end()) {
             LOG_INFO << "no umq events found";
@@ -240,6 +273,19 @@ namespace failure::log {
 
     void LogCollector::Stop()
     {
+        {
+            std::lock_guard<std::mutex> lk(stateMutex_);
+            running_ = false;
+        }
+        stateCond_.notify_all();
+
+        for (auto& t : workerThreads_) {
+            if (t.joinable()) {
+                t.join();
+            }
+        }
+        workerThreads_.clear();
+
         if (ofs_.is_open()) {
             ofs_.flush();
             ofs_.close();
@@ -525,15 +571,28 @@ namespace failure::log {
 
     void LogCollector::Save()
     {
+        std::vector<FailureMetadata> snapshot;
+        {
+            std::lock_guard<std::mutex> lock(metadataMutex_);
+            snapshot = metadata_;
+        }
+
         Json::Value j(Json::objectValue);
         j["events"] = Json::Value(Json::arrayValue);
-        for (const FailureMetadata& metadata : metadata_) {
+        for (const FailureMetadata& metadata : snapshot) {
             j["events"].append(metadata.ToJson());
         }
+
         Json::StreamWriterBuilder builder;
         builder["indentation"] = "  ";
+        std::ostringstream oss;
         std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
-        writer->write(j, &ofs_);
+        writer->write(j, &oss);
+        {
+            std::lock_guard<std::mutex> lock(ofsMutex_);
+            ofs_ << oss.str();
+            ofs_.flush();
+        }
     }
 
     bool LogCollector::IsValidPodId(const std::string& podId) const

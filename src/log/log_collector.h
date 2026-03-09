@@ -13,6 +13,7 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <fstream>
 #include <mutex>
 #include <thread>
@@ -46,13 +47,18 @@ namespace failure::log {
         std::unordered_map<std::string, std::unordered_set<std::string>> allowedPodIds_;
         FailureEventQuery query_;
 
-        std::atomic_bool running_{ false };
         std::vector<std::thread> workerThreads_;
         std::ofstream ofs_;
-        std::mutex mutex_;
 
         std::vector<std::shared_ptr<LogReader>> readers_;
         std::unordered_map<std::string, std::vector<FailureEvent>> eventsMap_;
         std::vector<FailureMetadata> metadata_;
+
+        std::mutex stateMutex_;
+        std::condition_variable stateCond_;
+        bool running_{ false };
+        std::mutex eventsMapMutex_;
+        std::mutex metadataMutex_;
+        std::mutex ofsMutex_;
     };
 }
