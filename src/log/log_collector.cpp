@@ -414,6 +414,10 @@ namespace failure::log {
                 LOG_ERROR << "unexpected arg pod-id in non pod mode";
                 return RACK_FAIL;
             }
+            if (it->second.empty()) {
+                LOG_ERROR << "empty argument pod-id";
+                return RACK_FAIL;
+            }
             std::vector<std::string> podIds;
             utils::Split(podIds, it->second, ',');
             for (const std::string& podId : podIds) {
