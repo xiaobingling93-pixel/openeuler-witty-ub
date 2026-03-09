@@ -43,7 +43,7 @@ namespace failure::log {
     private:
         bool podMode_{ false };
         std::unordered_map<std::string, std::vector<PathCell>> customizedLogPath_;
-        std::unordered_set<std::string> allowedPodIds_;
+        std::unordered_map<std::string, std::unordered_set<std::string>> allowedPodIds_;
         FailureEventQuery query_;
 
         std::atomic_bool running_{ false };

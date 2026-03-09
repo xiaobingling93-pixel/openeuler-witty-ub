@@ -333,13 +333,17 @@ namespace failure::log {
                         return RACK_FAIL;
                     }
                     const std::string& podId = entry.substr(0, pos);
+                    if (allowedPodIds_.find(component) != allowedPodIds_.end() && allowedPodIds_[component].find(podId) != allowedPodIds_[component].end()) {
+                        LOG_ERROR << "duplicated pod-id: " << podId << " for component " << component;
+                        return RACK_FAIL;
+                    }
                     const std::string& path = entry.substr(pos + 1);
                     if (!IsValidPodId(podId) || !IsValidPath(path, expectedDir)) {
                         LOG_ERROR << "invalid argument: " << arg;
                         return RACK_FAIL;
                     }
                     customizedLogPath_[component].emplace_back(podId, path);
-                    allowedPodIds_.insert(podId);
+                    allowedPodIds_[component].insert(podId);
                 }
                 return RACK_OK;
             }
@@ -416,9 +420,11 @@ namespace failure::log {
                 if (!IsValidPodId(podId)) {
                     return RACK_FAIL;
                 }
-                if (allowedPodIds_.find(podId) == allowedPodIds_.end()) {
-                    LOG_ERROR << "pod-id: " << podId << ", not provided in log path";
-                    return RACK_FAIL;
+                for (const auto& [component, podIds] : allowedPodIds_) {
+                    if (podIds.find(podId) == podIds.end()) {
+                        LOG_ERROR << "pod-id: " << podId << ", not provided in log path";
+                        return RACK_FAIL;
+                    }
                 }
                 query_.podIds.insert(podId);
             }
