@@ -280,24 +280,24 @@ namespace failure::log {
 
     RackResult LogCollector::ParsePodMode(const std::unordered_map<std::string, std::string>& argMap)
     {
-        auto it = argMap.find("pod_mode");
+        auto it = argMap.find("pod-mode");
         if (it == argMap.end()) {
-            LOG_ERROR << "missing argument pod_mode";
+            LOG_ERROR << "missing argument pod-mode";
             return RACK_FAIL;
         }
-        std::string_view pod_mode = it->second;
-        if (pod_mode != "on" && pod_mode != "off") {
-            LOG_ERROR << "invalid argument pod_mode: " << pod_mode << ", expected \"on\" or \"off\"";
+        std::string_view podMode = it->second;
+        if (podMode != "on" && podMode != "off") {
+            LOG_ERROR << "invalid argument pod-mode: " << podMode << ", expected \"on\" or \"off\"";
             return RACK_FAIL;
         }
-        podMode_ = pod_mode == "on";
+        podMode_ = podMode == "on";
         return RACK_OK;
     }
 
     RackResult LogCollector::ParseLogPath(const std::unordered_map<std::string, std::string>& argMap)
     {
         auto ComponentOf = [](const std::string& arg) -> std::string {
-            auto p = arg.find('_');
+            auto p = arg.find('-');
             return (p == std::string::npos) ? arg : arg.substr(0, p);
             };
 
@@ -323,13 +323,13 @@ namespace failure::log {
                 std::vector<std::string> entries;
                 utils::Split(entries, it->second, ',');
                 if (entries.empty()) {
-                    LOG_ERROR << "invalid argument " << arg << ": " << it->second << ", expected \"<pod_id1>:<path1>,<pod_id2>:<path2>,...\"";
+                    LOG_ERROR << "invalid argument " << arg << ": " << it->second << ", expected \"<pod-id1>:<path1>,<pod-id2>:<path2>,...\"";
                     return RACK_FAIL;
                 }
                 for (const std::string& entry : entries) {
                     auto pos = entry.find(':');
                     if (pos == std::string::npos) {
-                        LOG_ERROR << "invalid argument " << arg << ": " << entry << ", expected \"<pod_id>:<path>\"";
+                        LOG_ERROR << "invalid argument " << arg << ": " << entry << ", expected \"<pod-id>:<path>\"";
                         return RACK_FAIL;
                     }
                     const std::string& podId = entry.substr(0, pos);
@@ -353,12 +353,12 @@ namespace failure::log {
             return RACK_OK;
             };
 
-        if (HandleLogPath("ubsocket_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("umq_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/true) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("liburma_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/true) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("urmacore_log_path", /*podRequired=*/false, /*podSplitAndStrip=*/false, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("libudma_log_path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("udmacore_log_path", /*podRequired=*/false, /*podSplitAndStrip=*/false, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("ubsocket-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("umq-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/true) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("liburma-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/true) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("urmacore-log-path", /*podRequired=*/false, /*podSplitAndStrip=*/false, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("libudma-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("udmacore-log-path", /*podRequired=*/false, /*podSplitAndStrip=*/false, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
 
         return RACK_OK;
     }
@@ -367,47 +367,47 @@ namespace failure::log {
     {
         std::unordered_map<std::string, std::string>::const_iterator it;
 
-        if ((it = argMap.find("start_time")) == argMap.end()) {
-            LOG_ERROR << "missing argument start_time";
+        if ((it = argMap.find("start-time")) == argMap.end()) {
+            LOG_ERROR << "missing argument start-time";
             return RACK_FAIL;
         }
         auto startTime = utils::DatetimeStrToTimestamp(it->second);
         if (!startTime) {
-            LOG_ERROR << "invalid argument start_time: " << it->second;
+            LOG_ERROR << "invalid argument start-time: " << it->second;
             return RACK_FAIL;
         }
         query_.startTime = *startTime;
 
-        if ((it = argMap.find("end_time")) == argMap.end()) {
-            LOG_ERROR << "missing argument end_time";
+        if ((it = argMap.find("end-time")) == argMap.end()) {
+            LOG_ERROR << "missing argument end-time";
             return RACK_FAIL;
         }
         auto endTime = utils::DatetimeStrToTimestamp(it->second);
         if (!endTime) {
-            LOG_ERROR << "invalid argument end_time: " << it->second;
+            LOG_ERROR << "invalid argument end-time: " << it->second;
             return RACK_FAIL;
         }
         query_.endTime = *endTime + 999999LL;
 
-        if ((it = argMap.find("event_type")) != argMap.end()) {
+        if ((it = argMap.find("event-type")) != argMap.end()) {
             std::vector<std::string> eventTypes;
             utils::Split(eventTypes, it->second, ',');
             if (eventTypes.empty()) {
-                LOG_ERROR << "empty argument event_type";
+                LOG_ERROR << "empty argument event-type";
                 return RACK_FAIL;
             }
             for (const std::string& eventType : eventTypes) {
                 auto eventTypeOpt = EventTypeOptionFromString(eventType);
                 if (!eventTypeOpt) {
-                    LOG_ERROR << "invalid argument event_type: " << eventType;
+                    LOG_ERROR << "invalid argument event-type: " << eventType;
                     return RACK_FAIL;
                 }
                 query_.eventTypes.insert(*eventTypeOpt);
             }
         }
-        if ((it = argMap.find("pod_id")) != argMap.end()) {
+        if ((it = argMap.find("pod-id")) != argMap.end()) {
             if (!podMode_) {
-                LOG_ERROR << "unexpected arg pod_id in non pod mode";
+                LOG_ERROR << "unexpected arg pod-id in non pod mode";
                 return RACK_FAIL;
             }
             std::vector<std::string> podIds;
@@ -417,20 +417,20 @@ namespace failure::log {
                     return RACK_FAIL;
                 }
                 if (allowedPodIds_.find(podId) == allowedPodIds_.end()) {
-                    LOG_ERROR << "pod id: " << podId << ", not provided in log path";
+                    LOG_ERROR << "pod-id: " << podId << ", not provided in log path";
                     return RACK_FAIL;
                 }
                 query_.podIds.insert(podId);
             }
         }
-        if ((it = argMap.find("local_eid")) != argMap.end()) {
+        if ((it = argMap.find("local-eid")) != argMap.end()) {
             std::vector<std::string> localEids;
             utils::Split(localEids, it->second, ',');
             for (const std::string& localEid : localEids) {
                 query_.localEids.insert(localEid);
             }
         }
-        if ((it = argMap.find("jetty_id")) != argMap.end()) {
+        if ((it = argMap.find("jetty-id")) != argMap.end()) {
             std::vector<std::string> jettyIds;
             utils::Split(jettyIds, it->second, ',');
             for (const std::string& jettyId : jettyIds) {
@@ -529,18 +529,18 @@ namespace failure::log {
     bool LogCollector::IsValidPodId(const std::string& podId) const
     {
         if (podId.empty()) {
-            LOG_ERROR << "empty pod_id";
+            LOG_ERROR << "empty pod-id";
             return false;
         }
         if (podId.size() > 253) {
-            LOG_ERROR << "invalid pod_id: " << podId << ", size limit 253 but got size" << podId.size();
+            LOG_ERROR << "invalid pod-id: " << podId << ", size limit 253 but got size" << podId.size();
             return false;
         }
         for (size_t i = 0; i < podId.size(); ++i) {
             char ch = podId[i];
             bool isLowerAlnum = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9');
             if (!isLowerAlnum && !(ch == '-' && i != 0 && i != podId.size() - 1)) {
-                LOG_ERROR << "invalid pod_id: " << podId << ", unexpected character: " << ch;
+                LOG_ERROR << "invalid pod-id: " << podId << ", unexpected character: " << ch;
                 return false;
             }
         }
