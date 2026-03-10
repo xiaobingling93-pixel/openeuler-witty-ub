@@ -20,7 +20,6 @@
 #include "failure_def.h"
 #include "logger.h"
 #include "ubse_context.h"
-#include "utils.h"
 
 namespace failure::log {
     using namespace ubse::context;
@@ -243,7 +242,7 @@ namespace failure::log {
                     return RACK_OK;
                 }
                 std::vector<std::string> entries;
-                utils::Split(entries, it->second, ',');
+                failure::Split(entries, it->second, ',');
                 if (entries.empty()) {
                     LOG_ERROR << "invalid argument " << arg << ": " << it->second << ", expected \"<pod-id1>:<path1>,<pod-id2>:<path2>,...\"";
                     return RACK_FAIL;
@@ -298,7 +297,7 @@ namespace failure::log {
             return RACK_FAIL;
         }
         const std::string& startTimeStr = it->second;
-        auto startTime = utils::DatetimeStrToTimestamp(startTimeStr);
+        auto startTime = failure::DatetimeStrToTimestamp(startTimeStr);
         if (!startTime) {
             LOG_ERROR << "invalid argument start-time: " << startTimeStr;
             return RACK_FAIL;
@@ -309,7 +308,7 @@ namespace failure::log {
             return RACK_FAIL;
         }
         const std::string& endTimeStr = it->second;
-        auto endTime = utils::DatetimeStrToTimestamp(endTimeStr);
+        auto endTime = failure::DatetimeStrToTimestamp(endTimeStr);
         if (!endTime) {
             LOG_ERROR << "invalid argument end-time: " << endTimeStr;
             return RACK_FAIL;
@@ -322,7 +321,7 @@ namespace failure::log {
 
         if ((it = argMap.find("event-type")) != argMap.end()) {
             std::vector<std::string> eventTypes;
-            utils::Split(eventTypes, it->second, ',');
+            failure::Split(eventTypes, it->second, ',');
             if (eventTypes.empty()) {
                 LOG_ERROR << "empty argument event-type";
                 return RACK_FAIL;
@@ -346,7 +345,7 @@ namespace failure::log {
                 return RACK_FAIL;
             }
             std::vector<std::string> podIds;
-            utils::Split(podIds, it->second, ',');
+            failure::Split(podIds, it->second, ',');
             for (const std::string& podId : podIds) {
                 if (!IsValidPodId(podId)) {
                     return RACK_FAIL;
@@ -362,7 +361,7 @@ namespace failure::log {
         }
         if ((it = argMap.find("local-eid")) != argMap.end()) {
             std::vector<std::string> localEids;
-            utils::Split(localEids, it->second, ',');
+            failure::Split(localEids, it->second, ',');
             for (const std::string& localEid : localEids) {
                 if (!IsValidEid(localEid)) {
                     return RACK_FAIL;
@@ -372,7 +371,7 @@ namespace failure::log {
         }
         if ((it = argMap.find("jetty-id")) != argMap.end()) {
             std::vector<std::string> jettyIds;
-            utils::Split(jettyIds, it->second, ',');
+            failure::Split(jettyIds, it->second, ',');
             for (const std::string& jettyId : jettyIds) {
                 if (!IsValidJettyId(jettyId)) {
                     return RACK_FAIL;
@@ -674,7 +673,7 @@ namespace failure::log {
             return false;
         };
         std::vector<std::string> parts;
-        utils::Split(parts, eid, ':');
+        failure::Split(parts, eid, ':');
         if (parts.empty() ||
             parts.size() != 8 ||
             std::any_of(parts.begin(), parts.end(), [](const std::string& part) { return part.size() != 4; })) {
