@@ -36,6 +36,14 @@ namespace failure::log {
         RackResult ParseLogPath(const std::unordered_map<std::string, std::string>& argMap);
         RackResult ParseQueryCondition(const std::unordered_map<std::string, std::string>& argMap);
         RackResult CreateReaders();
+        void CollectUmqMetadata(
+            std::unordered_map<std::string, std::vector<FailureEvent>>& eventsMap,
+            std::vector<FailureMetadata>& localMetadata
+        );
+        void CollectCorrelatedLogs(
+            std::unordered_map<std::string, std::vector<FailureEvent>>& eventsMap,
+            std::vector<FailureMetadata>& localMetadata
+        );
         RackResult CorrelateEvents(std::unordered_map<std::string, std::vector<FailureEvent>>& eventsMap);
         void Save();
 

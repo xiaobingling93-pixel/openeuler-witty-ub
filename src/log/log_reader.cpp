@@ -20,6 +20,8 @@
 #include "logger.h"
 
 namespace failure::log {
+    static constexpr int VEC_SCALER = 2;
+
     LogReader::LogReader(DataSourceOption option, const PathCell& pathCell, int64_t startTime, int64_t endTime)
         : pathCell_(pathCell)
         , startTime_(startTime)
@@ -70,14 +72,13 @@ namespace failure::log {
                     event->pathCell = pathCell_;
                     return event;
                 }
-            }
-            else if (auto entry = parser_->MatchMultiLineTemplate(*line)) {
+            } else if (auto entry = parser_->MatchMultiLineTemplate(*line)) {
                 const LogTemplate* tmpl = entry->first;
                 std::unordered_map<std::string, std::string>& attributes = entry->second;
                 auto it = attributes.find("identifier");
                 std::string identifier = it->second;
                 std::string lines;
-                lines.reserve(line->size() + READ_BUFFER_SIZE);
+                lines.reserve(line->size() + readBufSize_);
                 lines.append(*line);
                 while (auto nextLine = ReadNextLine()) {
                     auto nextAttributes = tmpl->Match(*nextLine);
@@ -85,7 +86,7 @@ namespace failure::log {
                         nextAttributes->find("identifier") != nextAttributes->end() &&
                         nextAttributes->at("identifier") == identifier) {
                         if (lines.capacity() < lines.size() + nextLine->size()) {
-                            lines.reserve((lines.size() + nextLine->size()) * 2);
+                            lines.reserve((lines.size() + nextLine->size()) * VEC_SCALER);
                         }
                         lines.append(*nextLine);
                         continue;
@@ -113,20 +114,19 @@ namespace failure::log {
         }
 
         lineBuffer_.clear();
-        while (true) {
-            if (!fgets(readBuffer_.data(), readBuffer_.size(), handle_)) {
-                if (lineBuffer_.empty()) {
-                    return std::nullopt;
-                }
-                return std::move(lineBuffer_);
-            }
-
+        while (fgets(readBuffer_.data(), readBuffer_.size(), handle_) != nullptr) {
             const std::size_t chunkLen = std::strlen(readBuffer_.data());
             lineBuffer_.append(readBuffer_.data(), chunkLen);
+
             if (chunkLen > 0 && readBuffer_[chunkLen - 1] == '\n') {
                 return std::move(lineBuffer_);
             }
         }
+        if (lineBuffer_.empty()) {
+            return std::nullopt;
+        }
+
+        return std::move(lineBuffer_);
     }
 
     void LogReader::ConfigureHandle(DataSourceOption option)
@@ -154,8 +154,7 @@ namespace failure::log {
                 std::string cmd = "gawk -v s=" + std::to_string(startSec) + " -v e=" + std::to_string(endSec) + " -e '" + script + "' ";
                 if (std::filesystem::is_regular_file(p)) {
                     cmd += p;
-                }
-                else {
+                } else {
                     cmd = p + " -T | " + cmd;
                 }
                 return popen(cmd.c_str(), "r");
@@ -163,8 +162,7 @@ namespace failure::log {
             closer_ = [](FILE* f) {
                 pclose(f);
                 };
-        }
-        else {
+        } else {
             opener_ = [&](const std::string& p) {
                 auto startTimeStr = failure::TimestampToDatetimeStr(startTime_, "iso8601");
                 auto endTimeStr = failure::TimestampToDatetimeStr(endTime_, "iso8601");

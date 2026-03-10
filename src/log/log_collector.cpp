@@ -26,6 +26,11 @@ namespace failure::log {
 
     constexpr const char* FAILURE_MODE_FILE = "./data/failure-mode.json";
     constexpr const char* FAILURE_EVENT_FILE = "/var/witty-ub/failure-event.json";
+    constexpr const int64_t TIME_WINDOW_US = 10 * 1000000LL;
+    constexpr const int LOCAL_EID_IDX = 1;
+    constexpr const int LOCAL_JETTY_ID_IDX = 2;
+    constexpr const int REMOTE_EID_IDX = 3;
+    constexpr const int REMOTE_JETTY_ID_IDX = 4;
 
     inline static const std::regex biEndRe(
         R"(local eid: ([0-9a-f:]+), local jetty_id: (\d+), remote eid: ([0-9a-f:]+), remote jetty_id: (\d+))",
@@ -35,6 +40,31 @@ namespace failure::log {
         R"(eid: ([0-9a-f:]+), jetty_id: (\d+))",
         std::regex::optimize
     );
+
+    void CacheUmqEndpointFields(FailureEvent& event)
+    {
+        auto localEidIt = event.attributes.find("local_eid");
+        auto localJettyIdIt = event.attributes.find("local_jetty_id");
+        if (localEidIt != event.attributes.end() && localJettyIdIt != event.attributes.end()) {
+            return;
+        }
+
+        auto contentIt = event.attributes.find("content");
+        if (contentIt == event.attributes.end()) {
+            return;
+        }
+
+        std::smatch match;
+        if (std::regex_search(contentIt->second, match, biEndRe)) {
+            event.attributes["local_eid"] = match[LOCAL_EID_IDX].str();
+            event.attributes["local_jetty_id"] = match[LOCAL_JETTY_ID_IDX].str();
+            event.attributes["remote_eid"] = match[REMOTE_EID_IDX].str();
+            event.attributes["remote_jetty_id"] = match[REMOTE_JETTY_ID_IDX].str();
+        } else if (std::regex_search(contentIt->second, match, singleEndRe)) {
+            event.attributes["local_eid"] = match[LOCAL_EID_IDX].str();
+            event.attributes["local_jetty_id"] = match[LOCAL_JETTY_ID_IDX].str();
+        }
+    }
 
     RackResult LogCollector::Initialize()
     {
@@ -422,16 +452,14 @@ namespace failure::log {
                     }
                     if (std::filesystem::is_regular_file(p)) {
                         fileCells.push_back(pathCell);
-                    }
-                    else if (std::filesystem::is_directory(p)) {
+                    } else if (std::filesystem::is_directory(p)) {
                         for (const auto& entry : std::filesystem::directory_iterator(p)) {
                             if (entry.path().extension() == ".log") {
                                 fileCells.emplace_back(pathCell.podId, entry.path().string());
                             }
                         }
                     }
-                }
-                else {
+                } else {
                     fileCells.push_back(pathCell);
                 }
                 for (const PathCell& fileCell : fileCells) {
@@ -453,44 +481,9 @@ namespace failure::log {
         return RACK_OK;
     }
 
-    RackResult LogCollector::CorrelateEvents(std::unordered_map<std::string, std::vector<FailureEvent>>& eventsMap)
+    void LogCollector::CollectUmqMetadata(std::unordered_map<std::string, std::vector<FailureEvent>>& eventsMap,
+        std::vector<FailureMetadata>& localMetadata)
     {
-        auto cacheUmqEndpointFields = [](FailureEvent& event) {
-            auto localEidIt = event.attributes.find("local_eid");
-            auto localJettyIdIt = event.attributes.find("local_jetty_id");
-            if (localEidIt != event.attributes.end() && localJettyIdIt != event.attributes.end()) {
-                return;
-            }
-
-            auto contentIt = event.attributes.find("content");
-            if (contentIt == event.attributes.end()) {
-                return;
-            }
-
-            std::smatch match;
-            if (std::regex_search(contentIt->second, match, biEndRe)) {
-                event.attributes["local_eid"] = match[1].str();
-                event.attributes["local_jetty_id"] = match[2].str();
-                event.attributes["remote_eid"] = match[3].str();
-                event.attributes["remote_jetty_id"] = match[4].str();
-            }
-            else if (std::regex_search(contentIt->second, match, singleEndRe)) {
-                event.attributes["local_eid"] = match[1].str();
-                event.attributes["local_jetty_id"] = match[2].str();
-            }
-            };
-
-        if (eventsMap.find("umq") == eventsMap.end()) {
-            LOG_INFO << "no umq events found";
-            return RACK_OK;
-        }
-        std::vector<FailureMetadata> localMetadata;
-        localMetadata.reserve(eventsMap.at("umq").size());
-        for (auto& [_, events] : eventsMap) {
-            std::sort(events.begin(), events.end(), [](const FailureEvent& a, const FailureEvent& b) {
-                return a.timestamp < b.timestamp;
-                });
-        }
         for (FailureEvent& event : eventsMap.at("umq")) {
             if (event.attributes.at("alarm_level") != "error") {
                 continue;
@@ -512,7 +505,7 @@ namespace failure::log {
             metadata.procId = event.attributes.at("proc_id");
             metadata.timestamp = event.timestamp;
             metadata.text = event.text;
-            cacheUmqEndpointFields(event);
+            CacheUmqEndpointFields(event);
             auto localEidIt = event.attributes.find("local_eid");
             auto localJettyIdIt = event.attributes.find("local_jetty_id");
             auto remoteEidIt = event.attributes.find("remote_eid");
@@ -532,41 +525,28 @@ namespace failure::log {
                 localMetadata.push_back(std::move(metadata));
             }
         }
-        std::sort(localMetadata.begin(), localMetadata.end(), [](const FailureMetadata& a, const FailureMetadata& b) {
-            return a.timestamp < b.timestamp;
-            });
+    }
 
+    void LogCollector::CollectCorrelatedLogs(
+        std::unordered_map<std::string, std::vector<FailureEvent>>& eventsMap,
+        std::vector<FailureMetadata>& localMetadata)
+    {
         for (FailureMetadata& metadata : localMetadata) {
-            int64_t timeWindow = 10 * 1000000LL;
-            int64_t startTime = 0;
-            int64_t endTime = 0;
-
             for (auto& [component, events] : eventsMap) {
-                if (component == "hardware") {
-                    continue;
-                }
-                else if (component == "ubsocket") {
-                    startTime = metadata.timestamp;
-                    endTime = metadata.timestamp + timeWindow;
-                }
-                else {
-                    startTime = metadata.timestamp - timeWindow;
-                    endTime = metadata.timestamp;
-                }
-
-                auto beginIt = std::lower_bound(events.begin(), events.end(), startTime, [](const FailureEvent& event, int64_t timestamp) {
-                    return event.timestamp < timestamp;
-                    });
-                auto endIt = std::upper_bound(beginIt, events.end(), endTime, [](int64_t timestamp, const FailureEvent& event) {
-                    return timestamp < event.timestamp;
-                    });
+                if (component == "hardware") continue;
+                bool previousTimeWindow = (component == "ubsocket");
+                int64_t startTime = previousTimeWindow ? metadata.timestamp : metadata.timestamp - TIME_WINDOW_US;
+                int64_t endTime = previousTimeWindow ? metadata.timestamp + TIME_WINDOW_US : metadata.timestamp;
+                auto beginIt = std::lower_bound(events.begin(), events.end(), startTime,
+                    [](const FailureEvent& event, int64_t timestamp) { return event.timestamp < timestamp; });
+                auto endIt = std::upper_bound(beginIt, events.end(), endTime,
+                    [](int64_t timestamp, const FailureEvent& event) { return timestamp < event.timestamp; });
                 for (auto it = beginIt; it != endIt; ++it) {
                     FailureEvent& event = *it;
-                    if (podMode_ && event.pathCell.podId && metadata.podId && event.pathCell.podId != metadata.podId) {
+                    if (podMode_ && event.pathCell.podId && metadata.podId && event.pathCell.podId != metadata.podId)
                         continue;
-                    }
-
-                    bool resourceMatch = false;
+                    bool resourceMatch = (component == "urmacore" || component == "udmacore" ||
+                                          component == "libudma" || component == "ubsocket");
                     if (component == "umq" || component == "liburma") {
                         auto itProgramName = event.attributes.find("program_name");
                         auto itProcId = event.attributes.find("proc_id");
@@ -576,48 +556,55 @@ namespace failure::log {
                         }
                     }
                     if (component == "umq") {
-                        cacheUmqEndpointFields(event);
+                        CacheUmqEndpointFields(event);
                         auto localEidIt = event.attributes.find("local_eid");
                         auto localJettyIdIt = event.attributes.find("local_jetty_id");
                         std::optional<std::string> remoteEid;
                         std::optional<std::string> remoteJettyId;
                         auto remoteEidIt = event.attributes.find("remote_eid");
                         auto remoteJettyIdIt = event.attributes.find("remote_jetty_id");
-                        if (remoteEidIt != event.attributes.end()) {
-                            remoteEid = remoteEidIt->second;
-                        }
-                        if (remoteJettyIdIt != event.attributes.end()) {
-                            remoteJettyId = remoteJettyIdIt->second;
-                        }
-
-                        if (localEidIt != event.attributes.end() &&
-                            localJettyIdIt != event.attributes.end() &&
+                        if (remoteEidIt != event.attributes.end()) remoteEid = remoteEidIt->second;
+                        if (remoteJettyIdIt != event.attributes.end()) remoteJettyId = remoteJettyIdIt->second;
+                        if (localEidIt != event.attributes.end() && localJettyIdIt != event.attributes.end() &&
                             localEidIt->second == metadata.localEid &&
                             localJettyIdIt->second == metadata.localJettyId &&
-                            remoteEid == metadata.remoteEid &&
-                            remoteJettyId == metadata.remoteJettyId) {
+                            remoteEid == metadata.remoteEid && remoteJettyId == metadata.remoteJettyId) {
                             resourceMatch = true;
                         }
                     }
-                    if (component == "urmacore" || component == "udmacore" || component == "libudma" || component == "ubsocket") {
-                        resourceMatch = true;
-                    }
-
-                    if (resourceMatch) {
-                        metadata.events.push_back(&event);
-                    }
+                    if (resourceMatch) metadata.events.push_back(&event);
                 }
             }
-            std::sort(metadata.events.begin(), metadata.events.end(), [](const FailureEvent* a, const FailureEvent* b) {
-                return a->timestamp < b->timestamp;
+            std::sort(metadata.events.begin(), metadata.events.end(),
+                [](const FailureEvent* a, const FailureEvent* b) { return a->timestamp < b->timestamp; });
+        }
+    }
+
+    RackResult LogCollector::CorrelateEvents(std::unordered_map<std::string, std::vector<FailureEvent>>& eventsMap)
+    {
+        auto umqIt = eventsMap.find("umq");
+        if (umqIt == eventsMap.end()) {
+            LOG_INFO << "no umq events found";
+            return RACK_OK;
+        }
+        for (auto& [_, events] : eventsMap) {
+            std::sort(events.begin(), events.end(), [](const FailureEvent& a, const FailureEvent& b) {
+                return a.timestamp < b.timestamp;
                 });
         }
+
+        std::vector<FailureMetadata> localMetadata;
+        localMetadata.reserve(umqIt->second.size());
+        CollectUmqMetadata(eventsMap, localMetadata);
+        std::sort(localMetadata.begin(), localMetadata.end(), [](const FailureMetadata& a, const FailureMetadata& b) {
+            return a.timestamp < b.timestamp;
+            });
+        CollectCorrelatedLogs(eventsMap, localMetadata);
 
         {
             std::lock_guard<std::mutex> lk(metadataMutex_);
             metadata_.swap(localMetadata);
         }
-
         return RACK_OK;
     }
 
@@ -690,8 +677,7 @@ namespace failure::log {
                 LOG_ERROR << "invalid path: " << p << ", expected file but got directory";
                 return false;
             }
-        }
-        else {
+        } else {
             if (!std::filesystem::is_directory(path)) {
                 LOG_ERROR << "invalid path: " << p << ", expected directory but got file";
                 return false;

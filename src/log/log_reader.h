@@ -37,7 +37,7 @@ namespace failure::log {
         void ConfigureHandle(DataSourceOption option);
 
     private:
-        static constexpr std::size_t READ_BUFFER_SIZE = 4096;
+        static constexpr std::size_t readBufSize_ = 4096;
 
         PathCell pathCell_;
         int64_t startTime_;
@@ -48,7 +48,7 @@ namespace failure::log {
         std::function<void(FILE*)> closer_;
 
         std::optional<std::string> cachedLine_;
-        std::array<char, READ_BUFFER_SIZE> readBuffer_{};
+        std::array<char, readBufSize_> readBuffer_{};
         std::string lineBuffer_;
         std::unique_ptr<LogParser> parser_;
     };

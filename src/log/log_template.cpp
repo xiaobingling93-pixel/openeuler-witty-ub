@@ -31,7 +31,10 @@ namespace failure::log {
         return std::nullopt;
     }
 
-    std::optional<FailureEvent> LogTemplate::CreateEvent(std::unordered_map<std::string, std::string>&& attributes, std::string&& line) const
+    std::optional<FailureEvent> LogTemplate::CreateEvent(
+        std::unordered_map<std::string, std::string>&& attributes,
+        std::string&& line
+    ) const
     {
         auto it = attributes.find("datetime");
         if (it == attributes.end()) {
@@ -75,14 +78,12 @@ namespace failure::log {
             std::string fieldExpr = manifest.substr(start + 1, end - start - 1);
             if (fieldExpr.empty()) {
                 patternStr += ".*";
-            }
-            else {
+            } else {
                 size_t rangeStart = fieldExpr.find('(');
                 if (rangeStart == std::string::npos) {
                     fields_.push_back(fieldExpr);
                     patternStr += "(.*)";
-                }
-                else {
+                } else {
                     size_t rangeEnd = fieldExpr.find(')', rangeStart);
                     if (rangeEnd == std::string::npos) {
                         LOG_WARN << "invalid field range: " << fieldExpr;
