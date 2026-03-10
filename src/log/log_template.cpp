@@ -31,7 +31,10 @@ namespace failure::log {
         return std::nullopt;
     }
 
-    std::optional<FailureEvent> LogTemplate::CreateEvent(std::unordered_map<std::string, std::string>& attributes, const std::string& line) const
+    std::optional<FailureEvent> LogTemplate::CreateEvent(
+        std::unordered_map<std::string, std::string>&& attributes,
+        std::string&& line
+    ) const
     {
         auto it = attributes.find("datetime");
         if (it == attributes.end()) {
@@ -45,8 +48,8 @@ namespace failure::log {
         FailureEvent event;
         event.timestamp = *timestamp;
         event.component = mode_.component;
-        event.text = line;
-        event.attributes = attributes;
+        event.text = std::move(line);
+        event.attributes = std::move(attributes);
         return event;
     }
 
@@ -75,14 +78,12 @@ namespace failure::log {
             std::string fieldExpr = manifest.substr(start + 1, end - start - 1);
             if (fieldExpr.empty()) {
                 patternStr += ".*";
-            }
-            else {
+            } else {
                 size_t rangeStart = fieldExpr.find('(');
                 if (rangeStart == std::string::npos) {
                     fields_.push_back(fieldExpr);
                     patternStr += "(.*)";
-                }
-                else {
+                } else {
                     size_t rangeEnd = fieldExpr.find(')', rangeStart);
                     if (rangeEnd == std::string::npos) {
                         LOG_WARN << "invalid field range: " << fieldExpr;
@@ -121,8 +122,9 @@ namespace failure::log {
                 LOG_ERROR << "the size of fields to be matched (" << fields_.size() << ") does not match the number of captured ones (" << match.size() - 1 << ")";
                 return std::nullopt;
             }
+            res.reserve(fields_.size());
             for (size_t i = 1; i < match.size(); ++i) {
-                res[fields_[i - 1]] = match.str(i);
+                res.emplace(fields_[i - 1], match.str(i));
             }
             return res;
         }

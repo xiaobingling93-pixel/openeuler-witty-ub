@@ -14,13 +14,13 @@
 
 #include "log_reader.h"
 
-#include <array>
+#include <cstring>
 #include <filesystem>
 
 #include "logger.h"
 
 namespace failure::log {
-    constexpr std::size_t BUFFER_SIZE = 512;
+    static constexpr int VEC_SCALER = 2;
 
     LogReader::LogReader(DataSourceOption option, const PathCell& pathCell, int64_t startTime, int64_t endTime)
         : pathCell_(pathCell)
@@ -66,33 +66,36 @@ namespace failure::log {
             }
 
             if (auto entry = parser_->MatchSingleLineTemplate(*line)) {
-                LogTemplate& tmpl = entry->first;
+                const LogTemplate& tmpl = *entry->first;
                 std::unordered_map<std::string, std::string>& attributes = entry->second;
-                if (auto event = tmpl.CreateEvent(attributes, *line)) {
+                if (auto event = tmpl.CreateEvent(std::move(attributes), std::move(*line))) {
                     event->pathCell = pathCell_;
                     return event;
                 }
-            }
-            else if (auto entry = parser_->MatchMultiLineTemplate(*line)) {
-                LogTemplate& tmpl = entry->first;
+            } else if (auto entry = parser_->MatchMultiLineTemplate(*line)) {
+                const LogTemplate* tmpl = entry->first;
                 std::unordered_map<std::string, std::string>& attributes = entry->second;
                 auto it = attributes.find("identifier");
                 std::string identifier = it->second;
                 std::string lines;
-                lines += *line;
+                lines.reserve(line->size() + readBufSize_);
+                lines.append(*line);
                 while (auto nextLine = ReadNextLine()) {
-                    auto nextAttributes = tmpl.Match(*nextLine);
+                    auto nextAttributes = tmpl->Match(*nextLine);
                     if (nextAttributes &&
                         nextAttributes->find("identifier") != nextAttributes->end() &&
                         nextAttributes->at("identifier") == identifier) {
-                        lines += *nextLine;
+                        if (lines.capacity() < lines.size() + nextLine->size()) {
+                            lines.reserve((lines.size() + nextLine->size()) * VEC_SCALER);
+                        }
+                        lines.append(*nextLine);
                         continue;
                     }
                     cachedLine_ = std::move(nextLine);
                     break;
                 }
                 attributes.erase(it);
-                if (auto event = tmpl.CreateEvent(attributes, lines)) {
+                if (auto event = tmpl->CreateEvent(std::move(attributes), std::move(lines))) {
                     event->pathCell = pathCell_;
                     return event;
                 }
@@ -110,12 +113,20 @@ namespace failure::log {
             return line;
         }
 
-        std::array<char, BUFFER_SIZE> buffer;
-        if (!fgets(buffer.data(), buffer.size(), handle_)) {
+        lineBuffer_.clear();
+        while (fgets(readBuffer_.data(), readBuffer_.size(), handle_) != nullptr) {
+            const std::size_t chunkLen = std::strlen(readBuffer_.data());
+            lineBuffer_.append(readBuffer_.data(), chunkLen);
+
+            if (chunkLen > 0 && readBuffer_[chunkLen - 1] == '\n') {
+                return std::move(lineBuffer_);
+            }
+        }
+        if (lineBuffer_.empty()) {
             return std::nullopt;
         }
 
-        return std::string(buffer.data());
+        return std::move(lineBuffer_);
     }
 
     void LogReader::ConfigureHandle(DataSourceOption option)
@@ -143,8 +154,7 @@ namespace failure::log {
                 std::string cmd = "gawk -v s=" + std::to_string(startSec) + " -v e=" + std::to_string(endSec) + " -e '" + script + "' ";
                 if (std::filesystem::is_regular_file(p)) {
                     cmd += p;
-                }
-                else {
+                } else {
                     cmd = p + " -T | " + cmd;
                 }
                 return popen(cmd.c_str(), "r");
@@ -152,8 +162,7 @@ namespace failure::log {
             closer_ = [](FILE* f) {
                 pclose(f);
                 };
-        }
-        else {
+        } else {
             opener_ = [&](const std::string& p) {
                 auto startTimeStr = failure::TimestampToDatetimeStr(startTime_, "iso8601");
                 auto endTimeStr = failure::TimestampToDatetimeStr(endTime_, "iso8601");

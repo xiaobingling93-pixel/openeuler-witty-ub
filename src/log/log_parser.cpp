@@ -21,27 +21,26 @@ namespace failure::log {
     {
         if (mode.isMultiline) {
             multiLineTemplates_.emplace_back(mode);
-        }
-        else {
+        } else {
             singleLineTemplates_.emplace_back(mode);
         }
     }
 
-    std::optional<std::pair<LogTemplate, std::unordered_map<std::string, std::string>>> LogParser::MatchMultiLineTemplate(const std::string& line) const
+    std::optional<LogParser::TemplateEntry> LogParser::MatchMultiLineTemplate(const std::string& line) const
     {
         for (const LogTemplate& tmpl : multiLineTemplates_) {
             if (auto attributes = tmpl.Match(line)) {
-                return std::make_pair(std::cref(tmpl), *attributes);
+                return std::make_pair(&tmpl, std::move(*attributes));
             }
         }
         return std::nullopt;
     }
 
-    std::optional<std::pair<LogTemplate, std::unordered_map<std::string, std::string>>> LogParser::MatchSingleLineTemplate(const std::string& line) const
+    std::optional<LogParser::TemplateEntry> LogParser::MatchSingleLineTemplate(const std::string& line) const
     {
         for (const LogTemplate& tmpl : singleLineTemplates_) {
             if (auto attributes = tmpl.Match(line)) {
-                return std::make_pair(std::cref(tmpl), *attributes);
+                return std::make_pair(&tmpl, std::move(*attributes));
             }
         }
         return std::nullopt;

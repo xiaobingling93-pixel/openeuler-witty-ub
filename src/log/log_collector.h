@@ -36,7 +36,15 @@ namespace failure::log {
         RackResult ParseLogPath(const std::unordered_map<std::string, std::string>& argMap);
         RackResult ParseQueryCondition(const std::unordered_map<std::string, std::string>& argMap);
         RackResult CreateReaders();
-        RackResult CorrelateEvents();
+        void CollectUmqMetadata(
+            std::unordered_map<std::string, std::vector<FailureEvent>>& eventsMap,
+            std::vector<FailureMetadata>& localMetadata
+        );
+        void CollectCorrelatedLogs(
+            std::unordered_map<std::string, std::vector<FailureEvent>>& eventsMap,
+            std::vector<FailureMetadata>& localMetadata
+        );
+        RackResult CorrelateEvents(std::unordered_map<std::string, std::vector<FailureEvent>>& eventsMap);
         void Save();
 
         bool IsValidPodId(const std::string& podId) const;
@@ -51,16 +59,14 @@ namespace failure::log {
         FailureEventQuery query_;
 
         std::vector<std::thread> workerThreads_;
-        std::ofstream ofs_;
 
         std::vector<std::shared_ptr<LogReader>> readers_;
-        std::unordered_map<std::string, std::vector<FailureEvent>> eventsMap_;
         std::vector<FailureMetadata> metadata_;
 
         std::mutex stateMutex_;
         std::condition_variable stateCond_;
-        bool running_{ false };
-        std::mutex eventsMapMutex_;
+        bool startInProgress_{ false };
+        std::atomic_bool readerActive_{ false };
         std::mutex metadataMutex_;
         std::mutex ofsMutex_;
     };

@@ -96,7 +96,7 @@ namespace failure {
         std::optional<std::string> remoteJettyId;
         std::string text;
         std::optional<std::string> role;
-        std::vector<FailureEvent> events;
+        std::vector<const FailureEvent*> events;
 
         Json::Value ToJson() const;
     };
