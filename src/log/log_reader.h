@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -36,6 +37,8 @@ namespace failure::log {
         void ConfigureHandle(DataSourceOption option);
 
     private:
+        static constexpr std::size_t READ_BUFFER_SIZE = 4096;
+
         PathCell pathCell_;
         int64_t startTime_;
         int64_t endTime_;
@@ -45,6 +48,8 @@ namespace failure::log {
         std::function<void(FILE*)> closer_;
 
         std::optional<std::string> cachedLine_;
+        std::array<char, READ_BUFFER_SIZE> readBuffer_{};
+        std::string lineBuffer_;
         std::unique_ptr<LogParser> parser_;
     };
 }

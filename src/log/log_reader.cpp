@@ -14,14 +14,12 @@
 
 #include "log_reader.h"
 
-#include <array>
+#include <cstring>
 #include <filesystem>
 
 #include "logger.h"
 
 namespace failure::log {
-    constexpr std::size_t BUFFER_SIZE = 512;
-
     LogReader::LogReader(DataSourceOption option, const PathCell& pathCell, int64_t startTime, int64_t endTime)
         : pathCell_(pathCell)
         , startTime_(startTime)
@@ -66,33 +64,37 @@ namespace failure::log {
             }
 
             if (auto entry = parser_->MatchSingleLineTemplate(*line)) {
-                LogTemplate& tmpl = entry->first;
+                const LogTemplate& tmpl = *entry->first;
                 std::unordered_map<std::string, std::string>& attributes = entry->second;
-                if (auto event = tmpl.CreateEvent(attributes, *line)) {
+                if (auto event = tmpl.CreateEvent(std::move(attributes), std::move(*line))) {
                     event->pathCell = pathCell_;
                     return event;
                 }
             }
             else if (auto entry = parser_->MatchMultiLineTemplate(*line)) {
-                LogTemplate& tmpl = entry->first;
+                const LogTemplate* tmpl = entry->first;
                 std::unordered_map<std::string, std::string>& attributes = entry->second;
                 auto it = attributes.find("identifier");
                 std::string identifier = it->second;
                 std::string lines;
-                lines += *line;
+                lines.reserve(line->size() + READ_BUFFER_SIZE);
+                lines.append(*line);
                 while (auto nextLine = ReadNextLine()) {
-                    auto nextAttributes = tmpl.Match(*nextLine);
+                    auto nextAttributes = tmpl->Match(*nextLine);
                     if (nextAttributes &&
                         nextAttributes->find("identifier") != nextAttributes->end() &&
                         nextAttributes->at("identifier") == identifier) {
-                        lines += *nextLine;
+                        if (lines.capacity() < lines.size() + nextLine->size()) {
+                            lines.reserve((lines.size() + nextLine->size()) * 2);
+                        }
+                        lines.append(*nextLine);
                         continue;
                     }
                     cachedLine_ = std::move(nextLine);
                     break;
                 }
                 attributes.erase(it);
-                if (auto event = tmpl.CreateEvent(attributes, lines)) {
+                if (auto event = tmpl->CreateEvent(std::move(attributes), std::move(lines))) {
                     event->pathCell = pathCell_;
                     return event;
                 }
@@ -110,12 +112,21 @@ namespace failure::log {
             return line;
         }
 
-        std::array<char, BUFFER_SIZE> buffer;
-        if (!fgets(buffer.data(), buffer.size(), handle_)) {
-            return std::nullopt;
-        }
+        lineBuffer_.clear();
+        while (true) {
+            if (!fgets(readBuffer_.data(), readBuffer_.size(), handle_)) {
+                if (lineBuffer_.empty()) {
+                    return std::nullopt;
+                }
+                return std::move(lineBuffer_);
+            }
 
-        return std::string(buffer.data());
+            const std::size_t chunkLen = std::strlen(readBuffer_.data());
+            lineBuffer_.append(readBuffer_.data(), chunkLen);
+            if (chunkLen > 0 && readBuffer_[chunkLen - 1] == '\n') {
+                return std::move(lineBuffer_);
+            }
+        }
     }
 
     void LogReader::ConfigureHandle(DataSourceOption option)

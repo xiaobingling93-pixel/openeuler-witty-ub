@@ -155,8 +155,11 @@ namespace failure {
             j["role"] = Json::nullValue;
         }
         j["logs"] = Json::Value(Json::arrayValue);
-        for (const FailureEvent& event : events) {
-            j["logs"].append(event.ToJson());
+        for (const FailureEvent* event : events) {
+            if (event == nullptr) {
+                continue;
+            }
+            j["logs"].append(event->ToJson());
         }
         return j;
     }

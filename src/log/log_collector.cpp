@@ -60,6 +60,9 @@ namespace failure::log {
 
     RackResult LogCollector::Start()
     {
+        std::unordered_map<std::string, std::vector<FailureEvent>> eventsMap;
+        std::mutex eventsMapMutex;
+
         auto ReaderLoopOnce = [&](std::shared_ptr<LogReader> reader) {
             std::unordered_map<std::string, std::vector<FailureEvent>> localEventsMap;
             bool handleCreated = false;
@@ -67,11 +70,8 @@ namespace failure::log {
                 reader->CreateHandle();
                 handleCreated = true;
                 while (true) {
-                    {
-                        std::lock_guard<std::mutex> lk(stateMutex_);
-                        if (!running_) {
-                            break;
-                        }
+                    if (!readerActive_.load(std::memory_order_acquire)) {
+                        break;
                     }
                     auto event = reader->ReadOnce();
                     if (!event) {
@@ -95,9 +95,10 @@ namespace failure::log {
             }
 
             {
-                std::lock_guard<std::mutex> lk(eventsMapMutex_);
+                std::lock_guard<std::mutex> lk(eventsMapMutex);
                 for (auto& [component, events] : localEventsMap) {
-                    auto& dst = eventsMap_[component];
+                    auto& dst = eventsMap[component];
+                    dst.reserve(dst.size() + events.size());
                     dst.insert(dst.end(), std::make_move_iterator(events.begin()), std::make_move_iterator(events.end()));
                 }
             }
@@ -105,41 +106,50 @@ namespace failure::log {
 
         {
             std::unique_lock<std::mutex> lk(stateMutex_);
-            stateCond_.wait(lk, [this]() { return !running_; });
-            running_ = true;
+            stateCond_.wait(lk, [this]() { return !startInProgress_; });
+            startInProgress_ = true;
         }
+        readerActive_.store(true, std::memory_order_release);
 
-        struct RunningGuard {
-            LogCollector* self;
-            ~RunningGuard()
-            {
+        {
+            struct RunningGuard {
+                LogCollector* self;
+                ~RunningGuard()
                 {
-                    std::lock_guard<std::mutex> lk(self->stateMutex_);
-                    self->running_ = false;
+                    self->readerActive_.store(false, std::memory_order_release);
+                    {
+                        std::lock_guard<std::mutex> lk(self->stateMutex_);
+                        self->startInProgress_ = false;
+                    }
+                    self->stateCond_.notify_one();
                 }
-                self->stateCond_.notify_one();
+            }guard{ this };
+            {
+                std::lock_guard<std::mutex> lk(metadataMutex_);
+                metadata_.clear();
             }
-        }guard{ this };
-        eventsMap_.clear();
-        metadata_.clear();
-        workerThreads_.clear();
-        workerThreads_.reserve(readers_.size());
+            workerThreads_.clear();
+            workerThreads_.reserve(readers_.size());
 
 #ifdef ENABLE_TOOL_FEATURE
-        LOG_DEBUG << "LogCollector running in tool mode with per-reader threads (run once)";
-        for (auto reader : readers_) {
-            workerThreads_.emplace_back([&, reader]() {
-                ReaderLoopOnce(reader);
-                });
-        }
-        for (auto& t : workerThreads_) {
-            if (t.joinable()) {
-                t.join();
+            LOG_DEBUG << "LogCollector running in tool mode with per-reader threads (run once)";
+            for (auto reader : readers_) {
+                workerThreads_.emplace_back([&, reader]() {
+                    ReaderLoopOnce(reader);
+                    });
             }
-        }
-        workerThreads_.clear();
+            for (auto& t : workerThreads_) {
+                if (t.joinable()) {
+                    t.join();
+                }
+            }
+            workerThreads_.clear();
 
-        CorrelateEvents();
+            CorrelateEvents(eventsMap);
+#endif
+        }
+
+#ifdef ENABLE_TOOL_FEATURE
         Save();
 #endif
 
@@ -148,36 +158,24 @@ namespace failure::log {
 
     void LogCollector::Stop()
     {
-        {
-            std::lock_guard<std::mutex> lk(stateMutex_);
-            running_ = false;
-        }
-        stateCond_.notify_all();
-
+        readerActive_.store(false, std::memory_order_release);
         for (auto& t : workerThreads_) {
             if (t.joinable()) {
                 t.join();
             }
         }
         workerThreads_.clear();
-
-        if (ofs_.is_open()) {
-            ofs_.flush();
-            ofs_.close();
-        }
     }
 
     RackResult LogCollector::InitIO()
     {
         std::filesystem::path outFile = FAILURE_EVENT_FILE;
-        ofs_.open(FAILURE_EVENT_FILE, std::ios::out | std::ios::trunc);
-        if (!ofs_.is_open()) {
-            LOG_ERROR << "failed to open output file: " << FAILURE_EVENT_FILE;
+        std::error_code ec;
+        std::filesystem::create_directories(outFile.parent_path(), ec);
+        if (ec) {
+            LOG_ERROR << "failed to prepare output directory: " << outFile.parent_path() << ", error: " << ec.message();
             return RACK_FAIL;
         }
-        static constexpr size_t kBufSize = 1 << 20;
-        static char buf[kBufSize];
-        ofs_.rdbuf()->pubsetbuf(buf, kBufSize);
         std::ios::sync_with_stdio(false);
 
         return RACK_OK;
@@ -455,13 +453,45 @@ namespace failure::log {
         return RACK_OK;
     }
 
-    RackResult LogCollector::CorrelateEvents()
+    RackResult LogCollector::CorrelateEvents(std::unordered_map<std::string, std::vector<FailureEvent>>& eventsMap)
     {
-        if (eventsMap_.find("umq") == eventsMap_.end()) {
+        auto cacheUmqEndpointFields = [](FailureEvent& event) {
+            auto localEidIt = event.attributes.find("local_eid");
+            auto localJettyIdIt = event.attributes.find("local_jetty_id");
+            if (localEidIt != event.attributes.end() && localJettyIdIt != event.attributes.end()) {
+                return;
+            }
+
+            auto contentIt = event.attributes.find("content");
+            if (contentIt == event.attributes.end()) {
+                return;
+            }
+
+            std::smatch match;
+            if (std::regex_search(contentIt->second, match, biEndRe)) {
+                event.attributes["local_eid"] = match[1].str();
+                event.attributes["local_jetty_id"] = match[2].str();
+                event.attributes["remote_eid"] = match[3].str();
+                event.attributes["remote_jetty_id"] = match[4].str();
+            }
+            else if (std::regex_search(contentIt->second, match, singleEndRe)) {
+                event.attributes["local_eid"] = match[1].str();
+                event.attributes["local_jetty_id"] = match[2].str();
+            }
+            };
+
+        if (eventsMap.find("umq") == eventsMap.end()) {
             LOG_INFO << "no umq events found";
             return RACK_OK;
         }
-        for (const FailureEvent& event : eventsMap_.at("umq")) {
+        std::vector<FailureMetadata> localMetadata;
+        localMetadata.reserve(eventsMap.at("umq").size());
+        for (auto& [_, events] : eventsMap) {
+            std::sort(events.begin(), events.end(), [](const FailureEvent& a, const FailureEvent& b) {
+                return a.timestamp < b.timestamp;
+                });
+        }
+        for (FailureEvent& event : eventsMap.at("umq")) {
             if (event.attributes.at("alarm_level") != "error") {
                 continue;
             }
@@ -482,32 +512,36 @@ namespace failure::log {
             metadata.procId = event.attributes.at("proc_id");
             metadata.timestamp = event.timestamp;
             metadata.text = event.text;
-            std::smatch match;
-            if (std::regex_search(event.attributes.at("content"), match, biEndRe)) {
-                metadata.localEid = match[1].str();
-                metadata.localJettyId = match[2].str();
-                metadata.remoteEid = match[3].str();
-                metadata.remoteJettyId = match[4].str();
+            cacheUmqEndpointFields(event);
+            auto localEidIt = event.attributes.find("local_eid");
+            auto localJettyIdIt = event.attributes.find("local_jetty_id");
+            auto remoteEidIt = event.attributes.find("remote_eid");
+            auto remoteJettyIdIt = event.attributes.find("remote_jetty_id");
+            if (localEidIt != event.attributes.end() && localJettyIdIt != event.attributes.end()) {
+                metadata.localEid = localEidIt->second;
+                metadata.localJettyId = localJettyIdIt->second;
             }
-            else if (std::regex_search(event.attributes.at("content"), match, singleEndRe)) {
-                metadata.localEid = match[1].str();
-                metadata.localJettyId = match[2].str();
+            if (remoteEidIt != event.attributes.end()) {
+                metadata.remoteEid = remoteEidIt->second;
+            }
+            if (remoteJettyIdIt != event.attributes.end()) {
+                metadata.remoteJettyId = remoteJettyIdIt->second;
             }
 
             if (query_.Match(metadata, podMode_)) {
-                metadata_.push_back(metadata);
+                localMetadata.push_back(std::move(metadata));
             }
         }
-        std::sort(metadata_.begin(), metadata_.end(), [](const FailureMetadata& a, const FailureMetadata& b) {
+        std::sort(localMetadata.begin(), localMetadata.end(), [](const FailureMetadata& a, const FailureMetadata& b) {
             return a.timestamp < b.timestamp;
             });
 
-        for (FailureMetadata& metadata : metadata_) {
+        for (FailureMetadata& metadata : localMetadata) {
             int64_t timeWindow = 10 * 1000000LL;
             int64_t startTime = 0;
             int64_t endTime = 0;
 
-            for (auto& [component, events] : eventsMap_) {
+            for (auto& [component, events] : eventsMap) {
                 if (component == "hardware") {
                     continue;
                 }
@@ -520,10 +554,14 @@ namespace failure::log {
                     endTime = metadata.timestamp;
                 }
 
-                for (FailureEvent& event : events) {
-                    if (event.timestamp < startTime || event.timestamp > endTime) {
-                        continue;
-                    }
+                auto beginIt = std::lower_bound(events.begin(), events.end(), startTime, [](const FailureEvent& event, int64_t timestamp) {
+                    return event.timestamp < timestamp;
+                    });
+                auto endIt = std::upper_bound(beginIt, events.end(), endTime, [](int64_t timestamp, const FailureEvent& event) {
+                    return timestamp < event.timestamp;
+                    });
+                for (auto it = beginIt; it != endIt; ++it) {
+                    FailureEvent& event = *it;
                     if (podMode_ && event.pathCell.podId && metadata.podId && event.pathCell.podId != metadata.podId) {
                         continue;
                     }
@@ -538,34 +576,27 @@ namespace failure::log {
                         }
                     }
                     if (component == "umq") {
-                        auto it = event.attributes.find("content");
-                        if (it != event.attributes.end()) {
-                            const std::string& content = it->second;
-                            std::string localEid, localJettyId;
-                            std::optional<std::string> remoteEid, remoteJettyId;
-                            std::smatch match;
-                            if (std::regex_search(content, match, biEndRe)) {
-                                localEid = match[1].str();
-                                localJettyId = match[2].str();
-                                remoteEid = match[3].str();
-                                remoteJettyId = match[4].str();
-                            }
-                            else if (std::regex_search(content, match, singleEndRe)) {
-                                localEid = match[1].str();
-                                localJettyId = match[2].str();
-                            }
+                        cacheUmqEndpointFields(event);
+                        auto localEidIt = event.attributes.find("local_eid");
+                        auto localJettyIdIt = event.attributes.find("local_jetty_id");
+                        std::optional<std::string> remoteEid;
+                        std::optional<std::string> remoteJettyId;
+                        auto remoteEidIt = event.attributes.find("remote_eid");
+                        auto remoteJettyIdIt = event.attributes.find("remote_jetty_id");
+                        if (remoteEidIt != event.attributes.end()) {
+                            remoteEid = remoteEidIt->second;
+                        }
+                        if (remoteJettyIdIt != event.attributes.end()) {
+                            remoteJettyId = remoteJettyIdIt->second;
+                        }
 
-                            if (localEid == metadata.localEid && localJettyId == metadata.localJettyId && remoteEid == metadata.remoteEid && remoteJettyId == metadata.remoteJettyId) {
-                                resourceMatch = true;
-                                event.attributes["local_eid"] = localEid;
-                                event.attributes["local_jetty_id"] = localJettyId;
-                                if (remoteEid) {
-                                    event.attributes["remote_eid"] = *remoteEid;
-                                }
-                                if (remoteJettyId) {
-                                    event.attributes["remote_jetty_id"] = *remoteJettyId;
-                                }
-                            }
+                        if (localEidIt != event.attributes.end() &&
+                            localJettyIdIt != event.attributes.end() &&
+                            localEidIt->second == metadata.localEid &&
+                            localJettyIdIt->second == metadata.localJettyId &&
+                            remoteEid == metadata.remoteEid &&
+                            remoteJettyId == metadata.remoteJettyId) {
+                            resourceMatch = true;
                         }
                     }
                     if (component == "urmacore" || component == "udmacore" || component == "libudma" || component == "ubsocket") {
@@ -573,13 +604,18 @@ namespace failure::log {
                     }
 
                     if (resourceMatch) {
-                        metadata.events.push_back(event);
+                        metadata.events.push_back(&event);
                     }
                 }
-                std::sort(metadata.events.begin(), metadata.events.end(), [](const FailureEvent& a, const FailureEvent& b) {
-                    return a.timestamp < b.timestamp;
-                    });
             }
+            std::sort(metadata.events.begin(), metadata.events.end(), [](const FailureEvent* a, const FailureEvent* b) {
+                return a->timestamp < b->timestamp;
+                });
+        }
+
+        {
+            std::lock_guard<std::mutex> lk(metadataMutex_);
+            metadata_.swap(localMetadata);
         }
 
         return RACK_OK;
@@ -590,7 +626,7 @@ namespace failure::log {
         std::vector<FailureMetadata> snapshot;
         {
             std::lock_guard<std::mutex> lock(metadataMutex_);
-            snapshot = metadata_;
+            snapshot.swap(metadata_);
         }
 
         Json::Value j(Json::objectValue);
@@ -598,16 +634,18 @@ namespace failure::log {
         for (const FailureMetadata& metadata : snapshot) {
             j["events"].append(metadata.ToJson());
         }
-
         Json::StreamWriterBuilder builder;
         builder["indentation"] = "  ";
-        std::ostringstream oss;
         std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
-        writer->write(j, &oss);
         {
             std::lock_guard<std::mutex> lock(ofsMutex_);
-            ofs_ << oss.str();
-            ofs_.flush();
+            std::ofstream ofs(FAILURE_EVENT_FILE, std::ios::out | std::ios::trunc);
+            if (!ofs.is_open()) {
+                LOG_ERROR << "failed to open output file: " << FAILURE_EVENT_FILE;
+                return;
+            }
+            writer->write(j, &ofs);
+            ofs.flush();
         }
     }
 
