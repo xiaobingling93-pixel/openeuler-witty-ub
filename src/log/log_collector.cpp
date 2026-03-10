@@ -359,6 +359,9 @@ namespace failure::log {
             std::vector<std::string> localEids;
             utils::Split(localEids, it->second, ',');
             for (const std::string& localEid : localEids) {
+                if (!IsValidEid(localEid)) {
+                    return RACK_FAIL;
+                }
                 query_.localEids.insert(localEid);
             }
         }
@@ -366,6 +369,9 @@ namespace failure::log {
             std::vector<std::string> jettyIds;
             utils::Split(jettyIds, it->second, ',');
             for (const std::string& jettyId : jettyIds) {
+                if (!IsValidJettyId(jettyId)) {
+                    return RACK_FAIL;
+                }
                 query_.jettyIds.insert(jettyId);
             }
         }
@@ -608,7 +614,7 @@ namespace failure::log {
             return false;
         }
         if (podId.size() > 253) {
-            LOG_ERROR << "invalid pod-id: " << podId << ", size limit 253 but got size" << podId.size();
+            LOG_ERROR << "invalid pod-id: " << podId << ", expected no more than 253 characters but got " << podId.size();
             return false;
         }
         for (size_t i = 0; i < podId.size(); ++i) {
@@ -648,6 +654,45 @@ namespace failure::log {
                 LOG_ERROR << "invalid path: " << p << ", expected directory but got file";
                 return false;
             }
+        }
+        return true;
+    }
+
+    bool LogCollector::IsValidEid(const std::string& eid) const
+    {
+        if (eid.empty()) {
+            LOG_ERROR << "empty eid";
+            return false;
+        }
+        if (std::any_of(eid.begin(), eid.end(), [](unsigned char c) { return !std::isdigit(c) && !(c >= 'a' && c <= 'f') && c != ':'; })) {
+            LOG_ERROR << "invalid eid: " << eid;
+            return false;
+        };
+        std::vector<std::string> parts;
+        utils::Split(parts, eid, ':');
+        if (parts.empty() ||
+            parts.size() != 8 ||
+            std::any_of(parts.begin(), parts.end(), [](const std::string& part) { return part.size() != 4; })) {
+            LOG_ERROR << "invalid eid: " << eid;
+            return false;
+        }
+        return true;
+    }
+
+    bool LogCollector::IsValidJettyId(const std::string& jettyId) const
+    {
+        if (jettyId.empty()) {
+            LOG_ERROR << "empty jettyId";
+            return false;
+        }
+        if (std::any_of(jettyId.begin(), jettyId.end(), [](char c) { return !std::isdigit(c); })) {
+            LOG_ERROR << "invalid jettyId: " << jettyId;
+            return false;
+        }
+        int jettyIdInt = std::stoi(jettyId);
+        if (jettyIdInt == std::numeric_limits<int>::max()) {
+            LOG_ERROR << "invalid jettyId: " << jettyId;
+            return false;
         }
         return true;
     }

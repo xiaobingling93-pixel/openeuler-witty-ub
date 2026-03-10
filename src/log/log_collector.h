@@ -41,6 +41,8 @@ namespace failure::log {
 
         bool IsValidPodId(const std::string& podId) const;
         bool IsValidPath(const std::string& p, bool expectedDir) const;
+        bool IsValidEid(const std::string& eid) const;
+        bool IsValidJettyId(const std::string& jettyId) const;
 
     private:
         bool podMode_{ false };
