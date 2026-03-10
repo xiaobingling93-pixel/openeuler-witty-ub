@@ -297,23 +297,28 @@ namespace failure::log {
             LOG_ERROR << "missing argument start-time";
             return RACK_FAIL;
         }
-        auto startTime = utils::DatetimeStrToTimestamp(it->second);
+        const std::string& startTimeStr = it->second;
+        auto startTime = utils::DatetimeStrToTimestamp(startTimeStr);
         if (!startTime) {
-            LOG_ERROR << "invalid argument start-time: " << it->second;
+            LOG_ERROR << "invalid argument start-time: " << startTimeStr;
             return RACK_FAIL;
         }
         query_.startTime = *startTime;
-
         if ((it = argMap.find("end-time")) == argMap.end()) {
             LOG_ERROR << "missing argument end-time";
             return RACK_FAIL;
         }
-        auto endTime = utils::DatetimeStrToTimestamp(it->second);
+        const std::string& endTimeStr = it->second;
+        auto endTime = utils::DatetimeStrToTimestamp(endTimeStr);
         if (!endTime) {
-            LOG_ERROR << "invalid argument end-time: " << it->second;
+            LOG_ERROR << "invalid argument end-time: " << endTimeStr;
             return RACK_FAIL;
         }
         query_.endTime = *endTime + 999999LL;
+        if (query_.startTime > query_.endTime) {
+            LOG_ERROR << "logic error: start-time (" << startTimeStr << ") is later than end-time (" << endTimeStr << ")";
+            return RACK_FAIL;
+        }
 
         if ((it = argMap.find("event-type")) != argMap.end()) {
             std::vector<std::string> eventTypes;

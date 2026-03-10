@@ -13,7 +13,9 @@
 #include "utils.h"
 
 #include <array>
+#include <chrono>
 #include <ctime>
+#include <cstring>
 
 namespace utils {
     constexpr std::size_t BUFFER_SIZE = 64;
@@ -42,25 +44,51 @@ namespace utils {
 
     std::optional<int64_t> DatetimeStrToTimestamp(const std::string& datetimeStr)
     {
-        std::tm t = { 0 };
-        t.tm_isdst = -1;
-        const char* res = nullptr;
-        res = strptime(datetimeStr.c_str(), "[%a %b %d %H:%M:%S %Y]", &t);
-        if (res && *res == '\0') {
-            std::time_t s = mktime(&t);
+        auto now_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+        auto validate_and_convert = [&](std::tm& t, int64_t us, bool is_utc) -> std::optional<int64_t> {
+            std::tm orginal = t;
+            std::time_t s = is_utc ? timegm(&t) : mktime(&t);
             if (s == -1) {
                 return std::nullopt;
             }
-            return static_cast<int64_t>(s) * 1000000;
+
+            std::tm normalized = { 0 };
+            is_utc ? gmtime_r(&s, &normalized) : localtime_r(&s, &normalized);
+            if (normalized.tm_year != orginal.tm_year || normalized.tm_mon != orginal.tm_mon || normalized.tm_mday != orginal.tm_mday ||
+                normalized.tm_hour != orginal.tm_hour || normalized.tm_min != orginal.tm_min || normalized.tm_sec != orginal.tm_sec) {
+                return std::nullopt;
+            }
+
+            int64_t total_us = static_cast<int64_t>(s) * 1000000 + us;
+            if (total_us < 0 || total_us > now_us) {
+                return std::nullopt;
+            }
+
+            return total_us;
+            };
+
+        std::tm t;
+
+        std::memset(&t, 0, sizeof(t));
+        t.tm_isdst = -1;
+        const char* res = strptime(datetimeStr.c_str(), "[%a %b %d %H:%M:%S %Y]", &t);
+        if (res && *res == '\0') {
+            return validate_and_convert(t, 0, false);
         }
+
+        std::memset(&t, 0, sizeof(t));
+        t.tm_isdst = -1;
         res = strptime(datetimeStr.c_str(), "%Y-%m-%d %H:%M:%S", &t);
         if (res && *res == '\0') {
-            std::time_t s = mktime(&t);
-            if (s == -1) {
+            if (datetimeStr[10] != ' ') {
                 return std::nullopt;
             }
-            return static_cast<int64_t>(s) * 1000000;
+            return validate_and_convert(t, 0, false);
         }
+
+        std::memset(&t, 0, sizeof(t));
+        t.tm_isdst = -1;
         res = strptime(datetimeStr.c_str(), "%Y-%m-%dT%H:%M:%S", &t);
         if (res) {
             int64_t microseconds = 0;
@@ -72,24 +100,15 @@ namespace utils {
                 }
                 int len = end - res;
                 if (len > 0) {
-                    std::string fracStr(res, len);
-                    if (len > 6) {
-                        fracStr = fracStr.substr(0, 6);
-                    }
-                    else {
-                        fracStr.append(6 - len, '0');
-                    }
+                    std::string fracStr(res, (len > 6 ? 6 : len));
+                    if (len < 6) fracStr.append(6 - len, '0');
                     microseconds = std::stoll(fracStr);
                 }
                 res = end;
             }
             const char* tz = strptime(res, "%z", &t);
-            if (tz) {
-                std::time_t s = timegm(&t);
-                if (s == -1) {
-                    return std::nullopt;
-                }
-                return static_cast<int64_t>(s) * 1000000 + microseconds;
+            if (tz && *tz == '\0') {
+                return validate_and_convert(t, microseconds, true);
             }
         }
         return std::nullopt;
@@ -102,18 +121,18 @@ namespace utils {
         localtime_r(&seconds, &t);
 
         std::array<char, BUFFER_SIZE> buffer;
-        if (format == "local") {
+        if (format == "standard") {
             if (std::strftime(buffer.data(), buffer.size(), "%Y-%m-%d %H:%M:%S", &t) > 0) {
                 return std::string(buffer.data());
             }
         }
         else if (format == "iso8601") {
-            if (std::strftime(buffer.data(), buffer.size(), "%Y-%m-%dT%H:%M:%SZ", &t) > 0) {
+            if (std::strftime(buffer.data(), buffer.size(), "%Y-%m-%dT%H:%M:%S.000000+08:00", &t) > 0) {
                 return std::string(buffer.data());
             }
         }
         else if (format == "syslog") {
-            if (std::strftime(buffer.data(), buffer.size(), "%Y-%m-%d %H:%M:%S", &t) > 0) {
+            if (std::strftime(buffer.data(), buffer.size(), "[%a %b %d %H:%M:%S %Y]", &t) > 0) {
                 return std::string(buffer.data());
             }
         }
