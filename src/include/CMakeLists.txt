@@ -8,7 +8,7 @@
  # PURPOSE.
 ## See the Mulan PSL v2 for more details.
 
-add_library(include STATIC node_data_def.cpp failure_def.cpp utils.cpp)
+add_library(include STATIC node_data_def.cpp failure_def.cpp)
 find_package(log4cplus QUIET)
 
 if(NOT log4cplus_FOUND)

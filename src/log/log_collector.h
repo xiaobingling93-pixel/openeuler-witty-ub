@@ -13,6 +13,7 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <fstream>
 #include <mutex>
 #include <thread>
@@ -35,24 +36,32 @@ namespace failure::log {
         RackResult ParseLogPath(const std::unordered_map<std::string, std::string>& argMap);
         RackResult ParseQueryCondition(const std::unordered_map<std::string, std::string>& argMap);
         RackResult CreateReaders();
+        RackResult CorrelateEvents();
         void Save();
 
         bool IsValidPodId(const std::string& podId) const;
         bool IsValidPath(const std::string& p, bool expectedDir) const;
+        bool IsValidEid(const std::string& eid) const;
+        bool IsValidJettyId(const std::string& jettyId) const;
 
     private:
         bool podMode_{ false };
         std::unordered_map<std::string, std::vector<PathCell>> customizedLogPath_;
-        std::unordered_set<std::string> allowedPodIds_;
+        std::unordered_map<std::string, std::unordered_set<std::string>> allowedPodIds_;
         FailureEventQuery query_;
 
-        std::atomic_bool running_{ false };
         std::vector<std::thread> workerThreads_;
         std::ofstream ofs_;
-        std::mutex mutex_;
 
         std::vector<std::shared_ptr<LogReader>> readers_;
         std::unordered_map<std::string, std::vector<FailureEvent>> eventsMap_;
         std::vector<FailureMetadata> metadata_;
+
+        std::mutex stateMutex_;
+        std::condition_variable stateCond_;
+        bool running_{ false };
+        std::mutex eventsMapMutex_;
+        std::mutex metadataMutex_;
+        std::mutex ofsMutex_;
     };
 }

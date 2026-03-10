@@ -15,7 +15,6 @@
 #include "log_template.h"
 
 #include "logger.h"
-#include "utils.h"
 
 namespace failure::log {
     LogTemplate::LogTemplate(const FailureMode& mode)
@@ -38,7 +37,7 @@ namespace failure::log {
         if (it == attributes.end()) {
             return std::nullopt;
         }
-        auto timestamp = utils::DatetimeStrToTimestamp(it->second);
+        auto timestamp = failure::DatetimeStrToTimestamp(it->second);
         if (!timestamp) {
             return std::nullopt;
         }
@@ -93,7 +92,7 @@ namespace failure::log {
                     fields_.push_back(fieldName);
                     std::string rangeExpr = fieldExpr.substr(rangeStart + 1, rangeEnd - rangeStart - 1);
                     std::vector<std::string> range;
-                    utils::Split(range, rangeExpr, '/', /*keepEmpty=*/true);
+                    failure::Split(range, rangeExpr, '/', /*keepEmpty=*/true);
                     std::string group = "(";
                     for (int i = 0; i < range.size(); ++i) {
                         if (!range[i].empty()) {

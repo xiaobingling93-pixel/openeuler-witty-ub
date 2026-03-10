@@ -18,7 +18,6 @@
 #include <filesystem>
 
 #include "logger.h"
-#include "utils.h"
 
 namespace failure::log {
     constexpr std::size_t BUFFER_SIZE = 512;
@@ -156,8 +155,8 @@ namespace failure::log {
         }
         else {
             opener_ = [&](const std::string& p) {
-                auto startTimeStr = utils::TimestampToDatetimeStr(startTime_, "iso8601");
-                auto endTimeStr = utils::TimestampToDatetimeStr(endTime_, "iso8601");
+                auto startTimeStr = failure::TimestampToDatetimeStr(startTime_, "iso8601");
+                auto endTimeStr = failure::TimestampToDatetimeStr(endTime_, "iso8601");
                 std::string cmd = "awk -F'|' '$1 >= \"" + *startTimeStr + ".000000+08:00\" && $1 <= \"" + *endTimeStr + ".999999+08:00\"' " + p;
                 return popen(cmd.c_str(), "r");
                 };
