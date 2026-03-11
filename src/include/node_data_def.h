@@ -142,6 +142,9 @@ struct UbController : public ObjFormatter {
   }
 };
   inline void to_json(Json::Value &j, const UbController &u) {
+    j["slot_id"] = u.slotId;
+    j["ubpu_id"] = u.chipId;
+    j["iou_id"] = u.dieId;
     j["primary_cna"] = u.primaryCna;
   }
   struct Port : public ObjFormatter {
