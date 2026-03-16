@@ -24,7 +24,8 @@
 namespace failure::log {
     using namespace ubse::context;
 
-    constexpr const char* FAILURE_MODE_FILE = "./data/failure-mode.json";
+    constexpr const char* FAILURE_MODE_FILE = "/usr/share/witty-ub/data/failure-mode.json";
+    constexpr const char* FAILURE_MODE_FILE_DEV = "./data/failure-mode.json";
     constexpr const char* FAILURE_EVENT_FILE = "/var/witty-ub/failure-event.json";
     constexpr const int64_t TIME_WINDOW_US = 10 * 1000000LL;
     constexpr const int LOCAL_EID_IDX = 1;
@@ -415,7 +416,13 @@ namespace failure::log {
     {
         std::ifstream ifs(FAILURE_MODE_FILE);
         if (!ifs.is_open()) {
-            LOG_ERROR << "failed to open input file: " << FAILURE_MODE_FILE;
+            LOG_DEBUG << "file not found: " << FAILURE_MODE_FILE << ", try dev path...";
+            ifs.clear();
+            ifs.open(FAILURE_MODE_FILE_DEV);
+        }
+        if (!ifs.is_open()) {
+            LOG_ERROR << "failed to open input file: "
+                      << FAILURE_MODE_FILE << " or " << FAILURE_MODE_FILE_DEV;
             return RACK_FAIL;
         }
         Json::CharReaderBuilder builder;
