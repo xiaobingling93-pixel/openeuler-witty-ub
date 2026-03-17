@@ -15,7 +15,7 @@ witty-ub-topo ：超节点系统拓扑实时感知工具，基于管理组件提
 |:--------:|:----------:|:---------|:---------|:-------:|
 | --network-mode | string | 指定组网形式 | 需要为fullmesh或者clos | 是 |
 | --pod-mode | string | 指定是否是容器化部分 | 需为on(容器化部署)或者off(非容器化部署) | 是 |
-| --umq-log-path | string | 指定umq日志路径 | 1.pod-mode=on时，该参数格式需要为pod_id:path列表，即多个pod时格式为 pod_id1:path1,pod_id2:path...，其中pod_id需要符合k8s pod的命名规范（只包含小写字母，数字和连字符-，并且不能以连字符-开头或者结尾），pod_id不能重复，path需要为绝对路径，不允许包含空格和“ : ”,<br> 2.pod=off时，该参数为某一日志文件路径，不支持多个文件的形式，如不指定，默认为```/var/log/messages``` | pod=on时必选 |
+| --umq-log-path | string | 指定umq日志路径 | 1.pod-mode=on时，该参数格式需要为pod_id:path列表，即多个pod时格式为 pod_id1:path1,pod_id2:path...，其中pod_id需要符合k8s pod的命名规范（只包含小写字母，数字和连字符-，并且不能以连字符-开头或者结尾），pod_id不能重复，path需要为绝对路径，不允许包含空格和“ : ”<br> 2.pod=off时，该参数为某一日志文件路径，不支持多个文件的形式，如不指定，默认为```/var/log/messages``` | pod=on时必选 |
 | --pod-id | string | 指定要采集的pod id列表 | 1.pod-mode=off时无效<br> 2.pod-mode=on时，该参数不指定则默认采集全部umq-log-path中指定的pod，如指定pod_id，pod_id需要在umq-log-path指定的pod范围内,pod_id需符合k8s pod的命名规范 | 否 |
 
 * 组网形式为fullmesh，容器化部署

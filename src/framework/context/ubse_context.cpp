@@ -237,6 +237,18 @@ namespace ubse::context {
             outError = "path must be absolute (start with '/')";
             return false;
         }
+        // Check that outPath does not contain spaces
+        if (outPath.find(' ') != std::string::npos)
+        {
+            outError = "path cannot contain spaces";
+            return false;
+        }
+        // Check that outPath does not contain colons
+        if (outPath.find(':') != std::string::npos)
+        {
+            outError = "path cannot contain colons";
+            return false;
+        }
         return true;
     }
     RackResult UbseContext::ParseTopoToolsArgs(int argc, char* argv[])
