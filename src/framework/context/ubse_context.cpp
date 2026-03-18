@@ -217,6 +217,17 @@ namespace ubse::context {
         }
         return true;
     }
+    // Helper function to trim whitespace from both ends of a string
+    std::string trim(const std::string& str)
+    {
+        size_t first = str.find_first_not_of(" \t\n\r");
+        if (first == std::string::npos) {
+            return "";
+        }
+        size_t last = str.find_last_not_of(" \t\n\r");
+        return str.substr(first, last - first + 1);
+    }
+    
     bool isValidPathEntry(const std::string& entry, std::string& outPodId, std::string& outPath, std::string& outError)
     {
         size_t pos = entry.find(':');
@@ -225,30 +236,23 @@ namespace ubse::context {
             outError = "missing or invalid pod id";
             return false;
         }
-        outPodId = entry.substr(0, pos);
-        outPath = entry.substr(pos + 1);
+        
+        // Extract and trim podId and path parts
+        outPodId = trim(entry.substr(0, pos));
+        outPath = trim(entry.substr(pos + 1));
+        
         if (!isValidPodId(outPodId))
         {
             outError = "invalid pod id characters";
             return false;
         }
+        
         if (outPath.empty() || outPath[0] != '/')
         {
             outError = "path must be absolute (start with '/')";
             return false;
         }
-        // Check that outPath does not contain spaces
-        if (outPath.find(' ') != std::string::npos)
-        {
-            outError = "path cannot contain spaces";
-            return false;
-        }
-        // Check that outPath does not contain colons
-        if (outPath.find(':') != std::string::npos)
-        {
-            outError = "path cannot contain colons";
-            return false;
-        }
+        
         return true;
     }
     RackResult UbseContext::ParseTopoToolsArgs(int argc, char* argv[])

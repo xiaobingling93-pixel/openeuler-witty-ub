@@ -49,8 +49,10 @@ if(NOT log4cplus_FOUND)
     endforeach()
 endif()
 
+find_package(jsoncpp REQUIRED)
+
 # 链接库
-target_link_libraries(include PRIVATE ${LOG4CPLUS_LIBRARIES})
+target_link_libraries(include PRIVATE ${LOG4CPLUS_LIBRARIES} jsoncpp_lib)
 
 # 添加包含目录
 target_include_directories(include PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${LOG4CPLUS_INCLUDE_DIR})
