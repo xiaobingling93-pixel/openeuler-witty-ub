@@ -316,13 +316,12 @@ namespace failure::log {
             }
             return RACK_OK;
             };
-
-        if (HandleLogPath("ubsocket-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("umq-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("liburma-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("urmacore-log-path", /*podRequired=*/false, /*podSplitAndStrip=*/false) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("libudma-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("udmacore-log-path", /*podRequired=*/false, /*podSplitAndStrip=*/false) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("ubsocket-log-path", true, true) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("umq-log-path", true, true) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("liburma-log-path", true, true) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("urmacore-log-path", false, false) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("libudma-log-path", true, true) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("udmacore-log-path", false, false) != RACK_OK) return RACK_FAIL;
 
         return RACK_OK;
     }
@@ -389,6 +388,10 @@ namespace failure::log {
                 if (!IsValidPodId(podId)) {
                     return RACK_FAIL;
                 }
+                if (query_.podIds.find(podId) != query_.podIds.end()) {
+                    LOG_ERROR << "duplicated pod-id: " << podId;
+                    return RACK_FAIL;
+                }
                 for (const auto& [component, podIds] : allowedPodIds_) {
                     if (podIds.find(podId) == podIds.end()) {
                         LOG_ERROR << "pod-id: " << podId << ", not provided in log path";
@@ -405,6 +408,10 @@ namespace failure::log {
                 if (!IsValidEid(localEid)) {
                     return RACK_FAIL;
                 }
+                if (query_.localEids.find(localEid) != query_.localEids.end()) {
+                    LOG_ERROR << "duplicated local-eid: " << localEid;
+                    return RACK_FAIL;
+                }
                 query_.localEids.insert(localEid);
             }
         }
@@ -413,6 +420,10 @@ namespace failure::log {
             failure::Split(jettyIds, it->second, ',');
             for (const std::string& jettyId : jettyIds) {
                 if (!IsValidJettyId(jettyId)) {
+                    return RACK_FAIL;
+                }
+                if (query_.jettyIds.find(jettyId) != query_.jettyIds.end()) {
+                    LOG_ERROR << "duplicated jetty-id: " << jettyId;
                     return RACK_FAIL;
                 }
                 query_.jettyIds.insert(jettyId);
@@ -694,16 +705,21 @@ namespace failure::log {
             LOG_ERROR << "empty eid";
             return false;
         }
-        if (std::any_of(eid.begin(), eid.end(), [](unsigned char c) { return !std::isdigit(c) && !(c >= 'a' && c <= 'f') && c != ':'; })) {
-            LOG_ERROR << "invalid eid: " << eid;
+        auto it = std::find_if(eid.begin(), eid.end(), [](unsigned char c) {
+            return !std::isdigit(c) && !(c >= 'a' && c <= 'f') && c != ':';
+        });
+        if (it != eid.end()) {
+            LOG_ERROR << "invalid eid: " << eid
+                      << ", unexpected char: " << *it
+                      << "', ascii: " << static_cast<int>(static_cast<unsigned char>(*it));
             return false;
-        };
+        }
         std::vector<std::string> parts;
         failure::Split(parts, eid, ':');
         if (parts.empty() ||
             parts.size() != 8 ||
             std::any_of(parts.begin(), parts.end(), [](const std::string& part) { return part.size() != 4; })) {
-            LOG_ERROR << "invalid eid: " << eid;
+            LOG_ERROR << "invalid eid: " << eid << ", length must be 128";
             return false;
         }
         return true;
@@ -715,13 +731,19 @@ namespace failure::log {
             LOG_ERROR << "empty jettyId";
             return false;
         }
-        if (std::any_of(jettyId.begin(), jettyId.end(), [](char c) { return !std::isdigit(c); })) {
-            LOG_ERROR << "invalid jettyId: " << jettyId;
+        auto it = std::find_if(jettyId.begin(), jettyId.end(), [](unsigned char c) {
+            return !std::isdigit(c);
+        });
+        if (it != jettyId.end()) {
+            LOG_ERROR << "invalid jettyId: " << jettyId
+                      << ", unexpected char: '" << *it
+                      << "', ascii: " << static_cast<int>(static_cast<unsigned char>(*it));
             return false;
         }
-        int jettyIdInt = std::stoi(jettyId);
-        if (jettyIdInt == std::numeric_limits<int>::max()) {
-            LOG_ERROR << "invalid jettyId: " << jettyId;
+        try {
+            std::stoi(jettyId);
+        } catch (const std::exception& e) {
+            LOG_ERROR << "invalid jettyId: " << jettyId << ", " << e.what();
             return false;
         }
         return true;
