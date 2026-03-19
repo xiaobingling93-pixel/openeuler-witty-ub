@@ -17,6 +17,8 @@
 #include <algorithm>
 #include <filesystem>
 
+#include <re2/re2.h>
+
 #include "failure_def.h"
 #include "logger.h"
 #include "ubse_context.h"
@@ -33,13 +35,11 @@ namespace failure::log {
     constexpr const int REMOTE_EID_IDX = 3;
     constexpr const int REMOTE_JETTY_ID_IDX = 4;
 
-    inline static const std::regex biEndRe(
-        R"(local eid: ([0-9a-f:]+), local jetty_id: (\d+), remote eid: ([0-9a-f:]+), remote jetty_id: (\d+))",
-        std::regex::optimize
+    inline static const re2::RE2 biEndRe(
+        R"(local eid: ([0-9a-f:]+), local jetty_id: (\d+), remote eid: ([0-9a-f:]+), remote jetty_id: (\d+))"
     );
-    inline static const std::regex singleEndRe(
-        R"(eid: ([0-9a-f:]+), jetty_id: (\d+))",
-        std::regex::optimize
+    inline static const re2::RE2 singleEndRe(
+        R"(eid: ([0-9a-f:]+), jetty_id: (\d+))"
     );
 
     void CacheUmqEndpointFields(FailureEvent& event)
@@ -55,15 +55,25 @@ namespace failure::log {
             return;
         }
 
-        std::smatch match;
-        if (std::regex_search(contentIt->second, match, biEndRe)) {
-            event.attributes["local_eid"] = match[LOCAL_EID_IDX].str();
-            event.attributes["local_jetty_id"] = match[LOCAL_JETTY_ID_IDX].str();
-            event.attributes["remote_eid"] = match[REMOTE_EID_IDX].str();
-            event.attributes["remote_jetty_id"] = match[REMOTE_JETTY_ID_IDX].str();
-        } else if (std::regex_search(contentIt->second, match, singleEndRe)) {
-            event.attributes["local_eid"] = match[LOCAL_EID_IDX].str();
-            event.attributes["local_jetty_id"] = match[LOCAL_JETTY_ID_IDX].str();
+        std::string localEid;
+        std::string localJettyId;
+        std::string remoteEid;
+        std::string remoteJettyId;
+        if (re2::RE2::PartialMatch(
+            contentIt->second,
+            biEndRe,
+            &localEid,
+            &localJettyId,
+            &remoteEid,
+            &remoteJettyId
+        )) {
+            event.attributes["local_eid"] = std::move(localEid);
+            event.attributes["local_jetty_id"] = std::move(localJettyId);
+            event.attributes["remote_eid"] = std::move(remoteEid);
+            event.attributes["remote_jetty_id"] = std::move(remoteJettyId);
+        } else if (re2::RE2::PartialMatch(contentIt->second, singleEndRe, &localEid, &localJettyId)) {
+            event.attributes["local_eid"] = std::move(localEid);
+            event.attributes["local_jetty_id"] = std::move(localJettyId);
         }
     }
 

@@ -18,10 +18,13 @@ add_library(failure_log STATIC
 target_include_directories(failure_log PUBLIC 
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(RE2 REQUIRED IMPORTED_TARGET re2)
 target_link_libraries(failure_log
     PUBLIC
         include
         ubse_context
+        PkgConfig::RE2
 )
 find_package(jsoncpp REQUIRED)
 target_link_libraries(failure_log PRIVATE jsoncpp_lib)

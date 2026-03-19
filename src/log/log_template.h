@@ -12,8 +12,10 @@
 
 #pragma once
 
+#include <memory>
 #include <optional>
-#include <regex>
+
+#include <re2/re2.h>
 
 #include "failure_def.h"
 
@@ -36,7 +38,7 @@ namespace failure::log {
 
     private:
         FailureMode mode_;
-        std::regex pattern_;
+        std::unique_ptr<re2::RE2> pattern_;
         std::vector<std::string> fields_;
     };
 }

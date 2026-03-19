@@ -55,8 +55,7 @@ namespace failure::log {
 
     std::string LogTemplate::Escape(const std::string& str)
     {
-        static const std::regex escapeRegexChar(R"([.^$|()\\[\]{}*+?])");
-        return std::regex_replace(str, escapeRegexChar, R"(\$&)");
+        return re2::RE2::QuoteMeta(str);
     }
 
     void LogTemplate::CreateRegexCaptor(const std::string& manifest)
@@ -110,21 +109,31 @@ namespace failure::log {
 
             pos = end + 1;
         }
-        pattern_ = std::regex(patternStr, std::regex::ECMAScript | std::regex::optimize);
+        pattern_ = std::make_unique<re2::RE2>(patternStr, re2::RE2::Options());
+        if (!pattern_->ok()) {
+            LOG_ERROR << "failed to compile log template regex: " << pattern_->error()
+                      << ", pattern: " << patternStr;
+        }
     }
 
     std::optional<std::unordered_map<std::string, std::string>> LogTemplate::CaptureFields(const std::string& line) const
     {
-        std::smatch match;
-        if (std::regex_search(line, match, pattern_)) {
+        if (!pattern_ || !pattern_->ok()) {
+            return std::nullopt;
+        }
+
+        std::vector<re2::StringPiece> groups(fields_.size() + 1);
+        re2::StringPiece input(line);
+        if (pattern_->Match(input, 0, input.size(), re2::RE2::UNANCHORED, groups.data(), groups.size())) {
             std::unordered_map<std::string, std::string> res;
-            if (fields_.size() != match.size() - 1) {
-                LOG_ERROR << "the size of fields to be matched (" << fields_.size() << ") does not match the number of captured ones (" << match.size() - 1 << ")";
+            if (fields_.size() != groups.size() - 1) {
+                LOG_ERROR << "the size of fields to be matched (" << fields_.size()
+                          << ") does not match the number of captured ones (" << groups.size() - 1 << ")";
                 return std::nullopt;
             }
             res.reserve(fields_.size());
-            for (size_t i = 1; i < match.size(); ++i) {
-                res.emplace(fields_[i - 1], match.str(i));
+            for (size_t i = 1; i < groups.size(); ++i) {
+                res.emplace(fields_[i - 1], std::string(groups[i]));
             }
             return res;
         }
