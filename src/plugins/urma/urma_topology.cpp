@@ -11,25 +11,27 @@
  */
 
 #define MODULE_NAME "URMA"
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <map>
-#include <regex>
-#include <vector>
 #include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <map>
 #include <memory>
+#include <regex>
+#include <string>
+#include <vector>
 
 #include "logger.h"
-#include "urma_topology.h"
 #include "ubse_context.h"
 #include "urma_data_def.h"
+#include "urma_topology.h"
 namespace urma::topo {
 using namespace ubse::context;
 // 解析函数：提取local eid, local jetty_id, remote eid, remote jetty_id
 bool parseLogLine(const std::string &line, SessionKey &key)
 {
-    std::regex re(R"(local eid:\s*([0-9a-fA-F:]+),\s*local jetty_id:\s*(\d+),\s*remote eid:\s*([0-9a-fA-F:]+),\s*remote jetty_id:\s*(\d+))");
+    std::string pattern = std::string(R"(local eid:\s*([0-9a-fA-F:]+),\s*local jetty_id:\s*(\d+),)") +
+                        R"(\s*remote eid:\s*([0-9a-fA-F:]+),\s*remote jetty_id:\s*(\d+))";
+    std::regex re(pattern);
     std::smatch m;
     if (std::regex_search(line, m, re)) {
         if (m.size() == 5) {
@@ -43,20 +45,12 @@ bool parseLogLine(const std::string &line, SessionKey &key)
     return false;
 }
 
-URMAResult URMATopology::ParseUMQLog(std::string file_path, std::map<SessionKey, std::string> &activeSessions)
+std::vector<std::string> URMATopology::CollectLogFiles(const std::string &file_path)
 {
-    // Map 存储当前活跃的连接
-    // Key: SessionKey (local_eid,local_jetty_id,remote_eid,remote_jetty_id), Value: 原始日志行
-    LOG_DEBUG << "Start open umq log file.";
-    if (!std::filesystem::exists(file_path)) {
-        LOG_ERROR << "file: " << file_path << " is not exists";
-        return URMA_FAIL;
-    }
-
     std::vector<std::string> log_files;
     if (std::filesystem::is_directory(file_path)) {
         LOG_DEBUG << "Path is directory, collecting all .log files from: " << file_path;
-        for (const auto& entry : std::filesystem::directory_iterator(file_path)) {
+        for (const auto &entry : std::filesystem::directory_iterator(file_path)) {
             if (entry.path().extension() == ".log") {
                 log_files.push_back(entry.path().string());
                 LOG_DEBUG << "Found log file: " << entry.path().string();
@@ -64,74 +58,72 @@ URMAResult URMATopology::ParseUMQLog(std::string file_path, std::map<SessionKey,
         }
         if (log_files.empty()) {
             LOG_WARN << "No .log files found in directory: " << file_path;
-            return URMA_SUCCESS;
         }
     } else if (std::filesystem::is_regular_file(file_path)) {
         log_files.push_back(file_path);
-    } else {
-    LOG_ERROR << "Path is neither a file nor a directory: " << file_path;
+    }
+    return log_files;
+}
+
+URMAResult URMATopology::ProcessLogFile(const std::string &logFile, std::map<SessionKey, std::string> &activeSessions)
+{
+    LOG_DEBUG << "Processing log file: " << logFile;
+    std::ifstream file(logFile);
+    if (!file.is_open()) {
+        LOG_ERROR << "open file: " << logFile << " fails";
         return URMA_FAIL;
     }
-
-    for (const auto& log_file : log_files) {
-        LOG_DEBUG << "Processing log file: " << log_file;
-        std::ifstream file(log_file);
-        if (!file.is_open()) {
-            LOG_ERROR << "open file: " << log_file << " fails";
+    std::string line;
+    int lineNum = 0;
+    while (std::getline(file, line)) {
+        lineNum++;
+        if (line.empty()) {
+            continue;
+        }
+        LOG_DEBUG << "line is: " << line;
+        bool isBind = (line.find("bind jetty success") != std::string::npos);
+        bool isUnbind = (line.find("unbind jetty") != std::string::npos);
+        if (!isBind && !isUnbind) {
+            LOG_DEBUG << "line does not contain bind jetty success or unbind jetty";
+            continue;
+        }
+        SessionKey key;
+        if (!parseLogLine(line, key)) {
+            LOG_DEBUG << "line: " << lineNum << " log format is incorrect,"
+                      << " key: " << (isBind ? "bind network success" : "unbind network") << " is found,"
+                      << "but cannot get [local eid, local jetty_id, remote eid, remote jetty_id]";
+            LOG_ERROR << "This log line: " << line << " cannot be analyzed, data cannot be correctly matched.";
+            file.close();
             return URMA_FAIL;
         }
-
-        std::string line;
-        int lineNum = 0;
-        while (std::getline(file, line)) {
-            lineNum++;
-            if (line.empty())
-                continue;
-            LOG_DEBUG << "line is: " << line;
-            bool isBind = (line.find("bind jetty success") != std::string::npos);
-            bool isUnbind = (line.find("unbind jetty") != std::string::npos);
-            // 第一步：如果不包含任何关键词，直接跳过，不进行正则匹配
-            if (!isBind && !isUnbind) {
-                LOG_DEBUG << "line donnot contains bind network success or unbind network";
-                continue;
-            }
-
-            SessionKey key;
-            if (!parseLogLine(line, key)) {
-                // 格式不匹配或无参数，跳过
-                LOG_DEBUG << "line: " << lineNum << " log format is incorrect, "
-                          << " key: " << (isBind ? "bind network success" : "unbind network") << " is found, "
-                          << "but cannot get [local eid, local jetty_id, remote eid, remote jetty_id]";
-                LOG_ERROR << "This log line: " << line << " cannot be analyzed, data cannot be correctly matched.";
-                file.close();
-                return URMA_FAIL;
-            }
-
-            if (isBind) {
-                // 情况 1: Bind 
-                // 如果 Map 中已存在相同的 key （异常情况，比如重复bind未unbind），则覆盖更新为最新状态
-                // 这符合"顺序"逻辑：最新的 bind 生效
-                activeSessions[key] = line;
-                LOG_DEBUG << "line: " << lineNum << " is bind jetty success -> insert/update data: " << key.toString();
-            } else if (isUnbind) {
-                // 情况 2: Unbind
-                auto it = activeSessions.find(key);
-                if (it != activeSessions.end()) {
-                    // 找到对应的记录，删除它
-                    activeSessions.erase(it);
-                    LOG_DEBUG << "line: " << lineNum << "is unbind jetty -> delete bind data: " << key.toString();
-                } else {
-                    // 没找到记录（可能是日志缺失了）的 bind，或者是重复 unbind）
-                    LOG_DEBUG << "line: " << lineNum
-                              << " No corresponding Bind record is found (the record may have been deleted or log is "
-                                 "incomplete)."
-                              << key.toString();
-                }
-            }
+        if (isBind) {
+            activeSessions[key] = line;
+            LOG_DEBUG << "line: " << lineNum << " is bind jetty success -> insert/update data: " << key.toString();
+        } else if (isUnbind) {
+            activeSessions.erase(key);
+            LOG_DEBUG << "line: " << lineNum << " is unbind jetty -> delete bind data: " << key.toString();
         }
-        file.close();
     }
+    file.close();
+    return URMA_SUCCESS;
+}
 
+URMAResult URMATopology::ParseUMQLog(std::string file_path, std::map<SessionKey, std::string> &activeSessions)
+{
+    LOG_DEBUG << "Start open umq log file.";
+    if (!std::filesystem::exists(file_path)) {
+        LOG_ERROR << "file: " << file_path << " is not exists";
+        return URMA_FAIL;
+    }
+    std::vector<std::string> log_files = CollectLogFiles(file_path);
+    if (log_files.empty()) {
+        return URMA_SUCCESS;
+    }
+    for (const auto &log_file : log_files) {
+        if (ProcessLogFile(log_file, activeSessions) != URMA_SUCCESS) {
+            return URMA_FAIL;
+        }
+    }
     return URMA_SUCCESS;
 }
 

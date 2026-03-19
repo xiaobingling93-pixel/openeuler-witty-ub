@@ -47,7 +47,8 @@ namespace witty_json::io {
             
             // Generate temporary file path
             std::filesystem::path file_path(filename);
-            std::filesystem::path temp_path = file_path.parent_path() / (file_path.stem().string() + ".tmp" + file_path.extension().string());
+            std::filesystem::path temp_path =
+                file_path.parent_path() / (file_path.stem().string() + ".tmp" + file_path.extension().string());
             std::string temp_filename = temp_path.string();
             
             // Create a dedicated lock file path
@@ -91,7 +92,7 @@ namespace witty_json::io {
                 std::filesystem::rename(temp_filename, filename);
                 LOG_INFO << "WittyJson::WriteVectorsTofile-Info: successfully write to file " << filename;
             } catch (const std::filesystem::filesystem_error& e) {
-                LOG_ERROR << "WittyJson::WriteVectorsTofile-Error: failed to rename temporary file to " << filename 
+                LOG_ERROR << "WittyJson::WriteVectorsTofile-Error: failed to rename temporary file to " << filename
                           << ", error: " << e.what();
                 flock(lock_fd, LOCK_UN);
                 close(lock_fd);

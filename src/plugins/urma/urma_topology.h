@@ -55,6 +55,8 @@ public:
     URMAResult CreateTopology(ubse::context::TopoToolsArgs &args);
 private:
     std::shared_ptr<witty_json::module::JSONModule> jsonModule;
+    std::vector<std::string> CollectLogFiles(const std::string& file_path);
+    URMAResult ProcessLogFile(const std::string& logFile, std::map<SessionKey, std::string> &activeSessions);
 };
 } // namespace urma::topo
 #endif

@@ -218,7 +218,7 @@ namespace ubse::context {
         return true;
     }
     // Helper function to trim whitespace from both ends of a string
-    std::string trim(const std::string& str)
+    std::string TrimSpace(const std::string& str)
     {
         size_t first = str.find_first_not_of(" \t\n\r");
         if (first == std::string::npos) {
@@ -238,8 +238,8 @@ namespace ubse::context {
         }
         
         // Extract and trim podId and path parts
-        outPodId = trim(entry.substr(0, pos));
-        outPath = trim(entry.substr(pos + 1));
+        outPodId = TrimSpace(entry.substr(0, pos));
+        outPath = TrimSpace(entry.substr(pos + 1));
         
         if (!isValidPodId(outPodId))
         {
