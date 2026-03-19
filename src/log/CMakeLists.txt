@@ -18,13 +18,38 @@ add_library(failure_log STATIC
 target_include_directories(failure_log PUBLIC 
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(RE2 REQUIRED IMPORTED_TARGET re2)
+find_package(re2 QUIET CONFIG)
+
+if(TARGET re2::re2)
+    set(RE2_TARGET re2::re2)
+    get_target_property(RE2_INCLUDE_DIR re2::re2 INTERFACE_INCLUDE_DIRECTORIES)
+    message(STATUS "Found re2 at: ${RE2_INCLUDE_DIR}")
+elseif(TARGET re2)
+    set(RE2_TARGET re2)
+    get_target_property(RE2_INCLUDE_DIR re2 INTERFACE_INCLUDE_DIRECTORIES)
+    message(STATUS "Found re2 at: ${RE2_INCLUDE_DIR}")
+else()
+    message(STATUS "find_package(re2) failed, trying manual search...")
+    find_path(RE2_INCLUDE_DIR NAMES re2/re2.h)
+    find_library(RE2_LIBRARY NAMES re2)
+    if(NOT RE2_INCLUDE_DIR OR NOT RE2_LIBRARY)
+        message(FATAL_ERROR "re2 not found")
+    endif()
+
+    add_library(re2::re2 UNKNOWN IMPORTED)
+    set_target_properties(re2::re2 PROPERTIES
+        IMPORTED_LOCATION "${RE2_LIBRARY}"
+        INTERFACE_INCLUDE_DIRECTORIES "${RE2_INCLUDE_DIR}"
+    )
+    set(RE2_TARGET re2::re2)
+    message(STATUS "Found re2 at: ${RE2_INCLUDE_DIR}")
+endif()
+
 target_link_libraries(failure_log
     PUBLIC
         include
         ubse_context
-        PkgConfig::RE2
+        ${RE2_TARGET}
 )
 find_package(jsoncpp REQUIRED)
 target_link_libraries(failure_log PRIVATE jsoncpp_lib)
