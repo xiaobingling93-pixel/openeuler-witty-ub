@@ -261,7 +261,7 @@ namespace failure::log {
             return (p == std::string::npos) ? arg : arg.substr(0, p);
             };
 
-        auto HandleLogPath = [&](const std::string& arg, bool podRequired, bool podSplitAndStrip, bool expectedDir) -> RackResult {
+        auto HandleLogPath = [&](const std::string& arg, bool podRequired, bool podSplitAndStrip) -> RackResult {
             const std::string component = ComponentOf(arg);
             auto it = argMap.find(arg);
             if (podMode_) {
@@ -273,7 +273,7 @@ namespace failure::log {
                     return RACK_OK;
                 }
                 if (!podSplitAndStrip) {
-                    if (!IsValidPath(it->second, expectedDir) != RACK_OK) {
+                    if (!IsValidPath(it->second) != RACK_OK) {
                         LOG_ERROR << "invalid argument: " << arg;
                         return RACK_FAIL;
                     }
@@ -298,7 +298,7 @@ namespace failure::log {
                         return RACK_FAIL;
                     }
                     const std::string& path = entry.substr(pos + 1);
-                    if (!IsValidPodId(podId) || !IsValidPath(path, expectedDir)) {
+                    if (!IsValidPodId(podId) || !IsValidPath(path)) {
                         LOG_ERROR << "invalid argument: " << arg;
                         return RACK_FAIL;
                     }
@@ -308,7 +308,7 @@ namespace failure::log {
                 return RACK_OK;
             }
             if (it != argMap.end()) {
-                if (!IsValidPath(it->second, expectedDir) != RACK_OK) {
+                if (!IsValidPath(it->second) != RACK_OK) {
                     LOG_ERROR << "invalid argument: " << arg;
                     return RACK_FAIL;
                 }
@@ -317,12 +317,12 @@ namespace failure::log {
             return RACK_OK;
             };
 
-        if (HandleLogPath("ubsocket-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("umq-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/true) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("liburma-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/true) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("urmacore-log-path", /*podRequired=*/false, /*podSplitAndStrip=*/false, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("libudma-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
-        if (HandleLogPath("udmacore-log-path", /*podRequired=*/false, /*podSplitAndStrip=*/false, /*expectedDir*/false) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("ubsocket-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("umq-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("liburma-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("urmacore-log-path", /*podRequired=*/false, /*podSplitAndStrip=*/false) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("libudma-log-path", /*podRequired=*/true, /*podSplitAndStrip=*/true) != RACK_OK) return RACK_FAIL;
+        if (HandleLogPath("udmacore-log-path", /*podRequired=*/false, /*podSplitAndStrip=*/false) != RACK_OK) return RACK_FAIL;
 
         return RACK_OK;
     }
@@ -463,10 +463,6 @@ namespace failure::log {
                 std::filesystem::path p = pathCell.path;
                 std::vector<PathCell> fileCells;
                 if (mode.dataSource.option == DataSourceOption::USER) {
-                    if (!std::filesystem::exists(p)) {
-                        LOG_WARN << "file not found: " << p;
-                        continue;
-                    }
                     if (std::filesystem::is_regular_file(p)) {
                         fileCells.push_back(pathCell);
                     } else if (std::filesystem::is_directory(p)) {
@@ -674,7 +670,7 @@ namespace failure::log {
         return true;
     }
 
-    bool LogCollector::IsValidPath(const std::string& p, bool expectedDir) const
+    bool LogCollector::IsValidPath(const std::string& p) const
     {
         if (p.empty()) {
             LOG_ERROR << "empty path";
@@ -688,17 +684,6 @@ namespace failure::log {
         if (!std::filesystem::exists(path)) {
             LOG_ERROR << "path not found: " << p;
             return false;
-        }
-        if (!expectedDir) {
-            if (!std::filesystem::is_regular_file(path)) {
-                LOG_ERROR << "invalid path: " << p << ", expected file but got directory";
-                return false;
-            }
-        } else {
-            if (!std::filesystem::is_directory(path)) {
-                LOG_ERROR << "invalid path: " << p << ", expected directory but got file";
-                return false;
-            }
         }
         return true;
     }
