@@ -17,6 +17,46 @@
 #include "logger.h"
 
 namespace failure::log {
+    std::string EscapeRegex(const std::string& str)
+    {
+        return re2::RE2::QuoteMeta(str);
+    }
+
+    bool AppendRangeGroup(
+        const std::string& fieldExpr,
+        std::vector<std::string>& fields,
+        std::string& patternStr
+    )
+    {
+        size_t rangeStart = fieldExpr.find('(');
+        if (rangeStart == std::string::npos) {
+            fields.push_back(fieldExpr);
+            patternStr += "(.*)";
+            return true;
+        }
+
+        size_t rangeEnd = fieldExpr.find(')', rangeStart);
+        if (rangeEnd == std::string::npos) {
+            LOG_WARN << "invalid field range: " << fieldExpr;
+            return false;
+        }
+
+        fields.push_back(fieldExpr.substr(0, rangeStart));
+        std::vector<std::string> range;
+        failure::Split(range, fieldExpr.substr(rangeStart + 1, rangeEnd - rangeStart - 1), '/', true);
+        patternStr += "(";
+        for (size_t i = 0; i < range.size(); ++i) {
+            if (!range[i].empty()) {
+                patternStr += EscapeRegex(range[i]);
+            }
+            if (i + 1 != range.size()) {
+                patternStr += '|';
+            }
+        }
+        patternStr += ')';
+        return true;
+    }
+
     LogTemplate::LogTemplate(const FailureMode& mode)
         : mode_(mode)
     {
@@ -77,34 +117,8 @@ namespace failure::log {
             std::string fieldExpr = manifest.substr(start + 1, end - start - 1);
             if (fieldExpr.empty()) {
                 patternStr += ".*";
-            } else {
-                size_t rangeStart = fieldExpr.find('(');
-                if (rangeStart == std::string::npos) {
-                    fields_.push_back(fieldExpr);
-                    patternStr += "(.*)";
-                } else {
-                    size_t rangeEnd = fieldExpr.find(')', rangeStart);
-                    if (rangeEnd == std::string::npos) {
-                        LOG_WARN << "invalid field range: " << fieldExpr;
-                        break;
-                    }
-                    std::string fieldName = fieldExpr.substr(0, rangeStart);
-                    fields_.push_back(fieldName);
-                    std::string rangeExpr = fieldExpr.substr(rangeStart + 1, rangeEnd - rangeStart - 1);
-                    std::vector<std::string> range;
-                    failure::Split(range, rangeExpr, '/', /*keepEmpty=*/true);
-                    std::string group = "(";
-                    for (int i = 0; i < range.size(); ++i) {
-                        if (!range[i].empty()) {
-                            group += Escape(range[i]);
-                        }
-                        if (i != range.size() - 1) {
-                            group += '|';
-                        }
-                    }
-                    group += ')';
-                    patternStr += group;
-                }
+            } else if (!AppendRangeGroup(fieldExpr, fields_, patternStr)) {
+                break;
             }
 
             pos = end + 1;
@@ -128,7 +142,7 @@ namespace failure::log {
             std::unordered_map<std::string, std::string> res;
             if (fields_.size() != groups.size() - 1) {
                 LOG_ERROR << "the size of fields to be matched (" << fields_.size()
-                          << ") does not match the number of captured ones (" << groups.size() - 1 << ")";
+                          << ") does not match the number of captured ones (" << (groups.size() - 1) << ")";
                 return std::nullopt;
             }
             res.reserve(fields_.size());

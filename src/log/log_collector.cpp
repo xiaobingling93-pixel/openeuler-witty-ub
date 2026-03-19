@@ -65,8 +65,8 @@ namespace failure::log {
             &localEid,
             &localJettyId,
             &remoteEid,
-            &remoteJettyId
-        )) {
+            &remoteJettyId)
+        ) {
             event.attributes["local_eid"] = std::move(localEid);
             event.attributes["local_jetty_id"] = std::move(localJettyId);
             event.attributes["remote_eid"] = std::move(remoteEid);

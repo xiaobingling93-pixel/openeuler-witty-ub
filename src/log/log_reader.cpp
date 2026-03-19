@@ -62,7 +62,7 @@ namespace failure::log {
     std::vector<std::string> ExtractManifestKeywords(const std::string& manifest)
     {
         std::vector<std::string> keywords;
-        auto AddKeyword = [&](const std::string& candidate) {
+        auto addKeyword = [&keywords](const std::string& candidate) {
             std::string trimmed = TrimCopy(candidate);
             if (trimmed.empty() || !HasKeywordChar(trimmed)) {
                 return;
@@ -80,7 +80,8 @@ namespace failure::log {
             std::size_t partStart = 0;
             while (partStart <= literal.size()) {
                 std::size_t partEnd = literal.find('|', partStart);
-                AddKeyword(literal.substr(partStart, partEnd == std::string::npos ? std::string::npos : partEnd - partStart));
+                size_t partEndPos = partEnd == std::string::npos ? std::string::npos : partEnd - partStart;
+                addKeyword(literal.substr(partStart, partEndPos));
                 if (partEnd == std::string::npos) {
                     break;
                 }
@@ -115,12 +116,12 @@ namespace failure::log {
     }
 
     LogReader::LogReader(DataSourceOption option, const PathCell& pathCell, int64_t startTime, int64_t endTime)
-        : option_(option)
-        , pathCell_(pathCell)
-        , startTime_(startTime)
-        , endTime_(endTime)
-        , handle_(nullptr)
-        , parser_(std::make_unique<LogParser>())
+        : option_(option),
+        pathCell_(pathCell),
+        startTime_(startTime),
+        endTime_(endTime),
+        handle_(nullptr),
+        parser_(std::make_unique<LogParser>())
     {
     }
 
