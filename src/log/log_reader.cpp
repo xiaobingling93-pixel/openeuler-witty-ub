@@ -14,6 +14,8 @@
 
 #include "log_reader.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <filesystem>
 
@@ -22,14 +24,105 @@
 namespace failure::log {
     static constexpr int VEC_SCALER = 2;
 
-    LogReader::LogReader(DataSourceOption option, const PathCell& pathCell, int64_t startTime, int64_t endTime)
-        : pathCell_(pathCell)
-        , startTime_(startTime)
-        , endTime_(endTime)
-        , handle_(nullptr)
-        , parser_(std::make_unique<LogParser>())
+    std::string TrimCopy(const std::string& str)
     {
-        ConfigureHandle(option);
+        std::size_t begin = 0;
+        while (begin < str.size() && std::isspace(static_cast<unsigned char>(str[begin])) != 0) {
+            ++begin;
+        }
+
+        std::size_t end = str.size();
+        while (end > begin && std::isspace(static_cast<unsigned char>(str[end - 1])) != 0) {
+            --end;
+        }
+        return str.substr(begin, end - begin);
+    }
+
+    bool HasKeywordChar(const std::string& str)
+    {
+        return std::any_of(str.begin(), str.end(), [](unsigned char ch) {
+            return std::isalnum(ch) != 0 || ch == '_';
+        });
+    }
+
+    std::string ShellEscapeSingleQuotes(const std::string& str)
+    {
+        std::string escaped;
+        escaped.reserve(str.size());
+        for (char ch : str) {
+            if (ch == '\'') {
+                escaped += "'\\''";
+            } else {
+                escaped += ch;
+            }
+        }
+        return escaped;
+    }
+
+    std::vector<std::string> ExtractManifestKeywords(const std::string& manifest)
+    {
+        std::vector<std::string> keywords;
+        auto addKeyword = [&keywords](const std::string& candidate) {
+            std::string trimmed = TrimCopy(candidate);
+            if (trimmed.empty() || !HasKeywordChar(trimmed)) {
+                return;
+            }
+            if (std::find(keywords.begin(), keywords.end(), trimmed) == keywords.end()) {
+                keywords.push_back(std::move(trimmed));
+            }
+        };
+
+        std::size_t pos = 0;
+        while (pos < manifest.size()) {
+            std::size_t start = manifest.find('<', pos);
+            std::string literal = manifest.substr(pos, start == std::string::npos ? std::string::npos : start - pos);
+
+            std::size_t partStart = 0;
+            while (partStart <= literal.size()) {
+                std::size_t partEnd = literal.find('|', partStart);
+                size_t partEndPos = partEnd == std::string::npos ? std::string::npos : partEnd - partStart;
+                addKeyword(literal.substr(partStart, partEndPos));
+                if (partEnd == std::string::npos) {
+                    break;
+                }
+                partStart = partEnd + 1;
+            }
+
+            if (start == std::string::npos) {
+                break;
+            }
+            std::size_t end = manifest.find('>', start + 1);
+            if (end == std::string::npos) {
+                break;
+            }
+            pos = end + 1;
+        }
+        return keywords;
+    }
+
+    std::string BuildKeywordFilter(const std::vector<std::string>& keywords)
+    {
+        if (keywords.empty()) {
+            return "";
+        }
+
+        std::string filter = " | grep -F";
+        for (const std::string& keyword : keywords) {
+            filter += " -e '";
+            filter += ShellEscapeSingleQuotes(keyword);
+            filter += "'";
+        }
+        return filter;
+    }
+
+    LogReader::LogReader(DataSourceOption option, const PathCell& pathCell, int64_t startTime, int64_t endTime)
+        : option_(option),
+        pathCell_(pathCell),
+        startTime_(startTime),
+        endTime_(endTime),
+        handle_(nullptr),
+        parser_(std::make_unique<LogParser>())
+    {
     }
 
     LogReader::~LogReader()
@@ -39,6 +132,9 @@ namespace failure::log {
 
     void LogReader::CreateHandle()
     {
+        if (!opener_ || !closer_) {
+            ConfigureHandle(option_);
+        }
         if (!handle_ && opener_) {
             handle_ = opener_(pathCell_.path);
         }
@@ -55,6 +151,11 @@ namespace failure::log {
     void LogReader::AddFailureMode(const FailureMode& mode)
     {
         parser_->AddFailureMode(mode);
+        for (const std::string& keyword : ExtractManifestKeywords(mode.manifest)) {
+            if (std::find(keywords_.begin(), keywords_.end(), keyword) == keywords_.end()) {
+                keywords_.push_back(keyword);
+            }
+        }
     }
 
     std::optional<FailureEvent> LogReader::ReadOnce()
@@ -157,6 +258,7 @@ namespace failure::log {
                 } else {
                     cmd = p + " -T | " + cmd;
                 }
+                cmd += BuildKeywordFilter(keywords_);
                 return popen(cmd.c_str(), "r");
                 };
             closer_ = [](FILE* f) {
@@ -167,6 +269,7 @@ namespace failure::log {
                 auto startTimeStr = failure::TimestampToDatetimeStr(startTime_, "iso8601");
                 auto endTimeStr = failure::TimestampToDatetimeStr(endTime_, "iso8601");
                 std::string cmd = "awk -F'|' '$1 >= \"" + *startTimeStr + ".000000+08:00\" && $1 <= \"" + *endTimeStr + ".999999+08:00\"' " + p;
+                cmd += BuildKeywordFilter(keywords_);
                 return popen(cmd.c_str(), "r");
                 };
             closer_ = [](FILE* f) {

@@ -39,9 +39,11 @@ namespace failure::log {
     private:
         static constexpr std::size_t readBufSize_ = 4096;
 
+        DataSourceOption option_;
         PathCell pathCell_;
         int64_t startTime_;
         int64_t endTime_;
+        std::vector<std::string> keywords_;
 
         FILE* handle_;
         std::function<FILE* (const std::string&)> opener_;

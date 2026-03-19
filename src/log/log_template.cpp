@@ -17,6 +17,46 @@
 #include "logger.h"
 
 namespace failure::log {
+    std::string EscapeRegex(const std::string& str)
+    {
+        return re2::RE2::QuoteMeta(str);
+    }
+
+    bool AppendRangeGroup(
+        const std::string& fieldExpr,
+        std::vector<std::string>& fields,
+        std::string& patternStr
+    )
+    {
+        size_t rangeStart = fieldExpr.find('(');
+        if (rangeStart == std::string::npos) {
+            fields.push_back(fieldExpr);
+            patternStr += "(.*)";
+            return true;
+        }
+
+        size_t rangeEnd = fieldExpr.find(')', rangeStart);
+        if (rangeEnd == std::string::npos) {
+            LOG_WARN << "invalid field range: " << fieldExpr;
+            return false;
+        }
+
+        fields.push_back(fieldExpr.substr(0, rangeStart));
+        std::vector<std::string> range;
+        failure::Split(range, fieldExpr.substr(rangeStart + 1, rangeEnd - rangeStart - 1), '/', true);
+        patternStr += "(";
+        for (size_t i = 0; i < range.size(); ++i) {
+            if (!range[i].empty()) {
+                patternStr += EscapeRegex(range[i]);
+            }
+            if (i + 1 != range.size()) {
+                patternStr += '|';
+            }
+        }
+        patternStr += ')';
+        return true;
+    }
+
     LogTemplate::LogTemplate(const FailureMode& mode)
         : mode_(mode)
     {
@@ -55,8 +95,7 @@ namespace failure::log {
 
     std::string LogTemplate::Escape(const std::string& str)
     {
-        static const std::regex escapeRegexChar(R"([.^$|()\\[\]{}*+?])");
-        return std::regex_replace(str, escapeRegexChar, R"(\$&)");
+        return re2::RE2::QuoteMeta(str);
     }
 
     void LogTemplate::CreateRegexCaptor(const std::string& manifest)
@@ -78,53 +117,37 @@ namespace failure::log {
             std::string fieldExpr = manifest.substr(start + 1, end - start - 1);
             if (fieldExpr.empty()) {
                 patternStr += ".*";
-            } else {
-                size_t rangeStart = fieldExpr.find('(');
-                if (rangeStart == std::string::npos) {
-                    fields_.push_back(fieldExpr);
-                    patternStr += "(.*)";
-                } else {
-                    size_t rangeEnd = fieldExpr.find(')', rangeStart);
-                    if (rangeEnd == std::string::npos) {
-                        LOG_WARN << "invalid field range: " << fieldExpr;
-                        break;
-                    }
-                    std::string fieldName = fieldExpr.substr(0, rangeStart);
-                    fields_.push_back(fieldName);
-                    std::string rangeExpr = fieldExpr.substr(rangeStart + 1, rangeEnd - rangeStart - 1);
-                    std::vector<std::string> range;
-                    failure::Split(range, rangeExpr, '/', /*keepEmpty=*/true);
-                    std::string group = "(";
-                    for (int i = 0; i < range.size(); ++i) {
-                        if (!range[i].empty()) {
-                            group += Escape(range[i]);
-                        }
-                        if (i != range.size() - 1) {
-                            group += '|';
-                        }
-                    }
-                    group += ')';
-                    patternStr += group;
-                }
+            } else if (!AppendRangeGroup(fieldExpr, fields_, patternStr)) {
+                break;
             }
 
             pos = end + 1;
         }
-        pattern_ = std::regex(patternStr, std::regex::ECMAScript | std::regex::optimize);
+        pattern_ = std::make_unique<re2::RE2>(patternStr, re2::RE2::Options());
+        if (!pattern_->ok()) {
+            LOG_ERROR << "failed to compile log template regex: " << pattern_->error()
+                      << ", pattern: " << patternStr;
+        }
     }
 
     std::optional<std::unordered_map<std::string, std::string>> LogTemplate::CaptureFields(const std::string& line) const
     {
-        std::smatch match;
-        if (std::regex_search(line, match, pattern_)) {
+        if (!pattern_ || !pattern_->ok()) {
+            return std::nullopt;
+        }
+
+        std::vector<re2::StringPiece> groups(fields_.size() + 1);
+        re2::StringPiece input(line);
+        if (pattern_->Match(input, 0, input.size(), re2::RE2::UNANCHORED, groups.data(), groups.size())) {
             std::unordered_map<std::string, std::string> res;
-            if (fields_.size() != match.size() - 1) {
-                LOG_ERROR << "the size of fields to be matched (" << fields_.size() << ") does not match the number of captured ones (" << match.size() - 1 << ")";
+            if (fields_.size() != groups.size() - 1) {
+                LOG_ERROR << "the size of fields to be matched (" << fields_.size()
+                          << ") does not match the number of captured ones (" << (groups.size() - 1) << ")";
                 return std::nullopt;
             }
             res.reserve(fields_.size());
-            for (size_t i = 1; i < match.size(); ++i) {
-                res.emplace(fields_[i - 1], match.str(i));
+            for (size_t i = 1; i < groups.size(); ++i) {
+                res.emplace(fields_[i - 1], std::string(groups[i]));
             }
             return res;
         }
