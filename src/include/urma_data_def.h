@@ -50,7 +50,7 @@ inline void to_json(Json::Value& j, const Jetty& y) {
     j["local_jetty_id"] = y.localJettyId;
     j["local_eid"] = y.localDevEid;
     j["remote_jetty_id"] = y.remoteJettyId;
-    j["remote_dev_id"] = y.remoteDevId;
+    j["remote_eid"] = y.remoteDevId;
     if(y.podId.has_value()){
         j["pod_id"] = y.podId.value();
     }
