@@ -196,15 +196,15 @@ namespace failure {
     {
         auto now_us = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
-        auto validate_and_convert = [&](std::tm& t, int64_t us, bool is_utc) -> std::optional<int64_t> {
+        auto validate_and_convert = [&](std::tm& t, int64_t us) -> std::optional<int64_t> {
             std::tm orginal = t;
-            std::time_t s = is_utc ? timegm(&t) : mktime(&t);
+            std::time_t s = mktime(&t);
             if (s == -1) {
                 return std::nullopt;
             }
 
             std::tm normalized = { 0 };
-            is_utc ? gmtime_r(&s, &normalized) : localtime_r(&s, &normalized);
+            localtime_r(&s, &normalized);
             if (normalized.tm_year != orginal.tm_year || normalized.tm_mon != orginal.tm_mon || normalized.tm_mday != orginal.tm_mday ||
                 normalized.tm_hour != orginal.tm_hour || normalized.tm_min != orginal.tm_min || normalized.tm_sec != orginal.tm_sec) {
                 return std::nullopt;
@@ -224,7 +224,7 @@ namespace failure {
         t.tm_isdst = -1;
         const char* res = strptime(datetimeStr.c_str(), "[%a %b %d %H:%M:%S %Y]", &t);
         if (res && *res == '\0') {
-            return validate_and_convert(t, 0, false);
+            return validate_and_convert(t, 0);
         }
 
         std::memset(&t, 0, sizeof(t));
@@ -234,7 +234,7 @@ namespace failure {
             if (datetimeStr[10] != ' ') {
                 return std::nullopt;
             }
-            return validate_and_convert(t, 0, false);
+            return validate_and_convert(t, 0);
         }
 
         std::memset(&t, 0, sizeof(t));
@@ -256,10 +256,7 @@ namespace failure {
                 }
                 res = end;
             }
-            const char* tz = strptime(res, "%z", &t);
-            if (tz && *tz == '\0') {
-                return validate_and_convert(t, microseconds, true);
-            }
+            return validate_and_convert(t, microseconds);
         }
         return std::nullopt;
     }
