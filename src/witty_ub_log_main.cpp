@@ -10,7 +10,7 @@
  * See the Mulan PSL v2 for more details.
  */
 
-#define MODULE_NAME "Copilot-UB-Log"
+#define MODULE_NAME "WITTY-UB-LOG"
 
 #include <iostream>
 
