@@ -277,7 +277,7 @@ namespace failure {
             }
         }
         else if (format == "iso8601") {
-            if (std::strftime(buffer.data(), buffer.size(), "%Y-%m-%dT%H:%M:%S.000000+08:00", &t) > 0) {
+            if (std::strftime(buffer.data(), buffer.size(), "%Y-%m-%dT%H:%M:%S", &t) > 0) {
                 return std::string(buffer.data());
             }
         }
