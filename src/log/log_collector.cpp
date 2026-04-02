@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <sys/stat.h>
 
 #include <re2/re2.h>
 
@@ -29,6 +30,7 @@ namespace failure::log {
     constexpr const char* FAILURE_MODE_FILE = "/usr/share/witty-ub/data/failure-mode.json";
     constexpr const char* FAILURE_MODE_FILE_DEV = "./data/failure-mode.json";
     constexpr const char* FAILURE_EVENT_FILE = "/var/witty-ub/failure-event.json";
+    constexpr mode_t FAILURE_EVENT_FILE_PERM_640 = 0640;
     constexpr const int64_t TIME_WINDOW_US = 10 * 1000000LL;
     constexpr const int LOCAL_EID_IDX = 1;
     constexpr const int LOCAL_JETTY_ID_IDX = 2;
@@ -657,6 +659,10 @@ namespace failure::log {
             }
             writer->write(j, &ofs);
             ofs.flush();
+            ofs.close();
+            if (::chmod(FAILURE_EVENT_FILE, FAILURE_EVENT_FILE_PERM_640) != 0) {
+                LOG_ERROR << "failed to set file mode 0640 for output file: " << FAILURE_EVENT_FILE;
+            }
         }
     }
 

@@ -20,6 +20,7 @@
 #include "ubse_context.h"
 namespace urma::topo {
 constexpr const char *URMA_JSON_PATH = "/var/witty-ub/urma-topology.json";
+constexpr mode_t URMA_JSON_PATH_PERM_640 = 0640;
 struct SessionKey {
     std::string local_eid;
     std::string local_jetty_id;

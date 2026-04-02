@@ -18,6 +18,7 @@
 #include <memory>
 #include <regex>
 #include <string>
+#include <sys/stat.h>
 #include <vector>
 
 #include "logger.h"
@@ -132,6 +133,7 @@ URMAResult URMATopology::CreateTopology(TopoToolsArgs &args)
     std::vector<topology::urma::Pod> pods;
     std::vector<topology::urma::Jetty> jetties;
     std::vector<topology::urma::URMADevice> urma_devices;
+    bool needSetPerm = false;
     auto input_umq_log_path = args.umq_log_path_map;
     if (args.pod_mode == "on") {
         std::map<std::string, std::string> target_log_path;
@@ -169,8 +171,9 @@ URMAResult URMATopology::CreateTopology(TopoToolsArgs &args)
         auto ret = jsonModule->WriteVectorsToFile(URMA_JSON_PATH, pod_pair, jetty_pair, urma_device_pair);
         if (ret == RACK_FAIL) {
             LOG_ERROR << "Failed to writer to file " << URMA_JSON_PATH;
+        } else {
+            needSetPerm = true;
         }
-
     } else if (args.pod_mode == "off") {
         auto it = input_umq_log_path.find("normal");
         if (it == input_umq_log_path.end()) {
@@ -195,9 +198,13 @@ URMAResult URMATopology::CreateTopology(TopoToolsArgs &args)
             LOG_ERROR << "Failed to writer to file " << URMA_JSON_PATH;
             return URMA_FAIL;
         }
+        needSetPerm = true;
     } else {
         LOG_ERROR << "Unknown pod mode: " << args.pod_mode;
         return URMA_FAIL;
+    }
+    if (needSetPerm && ::chmod(URMA_JSON_PATH, URMA_JSON_PATH_PERM_640) != 0) {
+        LOG_ERROR << "Failed to set file mode 0640 for output file " << URMA_JSON_PATH;
     }
     LOG_DEBUG << "Success create urma topology and save to file " << URMA_JSON_PATH;
     return URMA_SUCCESS;
