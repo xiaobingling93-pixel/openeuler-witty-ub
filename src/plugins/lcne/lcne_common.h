@@ -46,6 +46,7 @@ namespace lcne::common
   constexpr const char *JSON_OUTPUT_FILE = "/var/witty-ub/lcne-topology.json";
   constexpr mode_t CONFIG_FILE_PERM_755 = 0755; // Todo
   constexpr mode_t CONFIG_PATH_PERM_755 = 0755;
+  constexpr mode_t JSON_OUTPUT_FILE_PERM_640 = 0640;
 
   template <typename... Args>
   tinyxml2::XMLElement *getElement(string &xml_content, Args &&...args)

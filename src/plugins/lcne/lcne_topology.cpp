@@ -18,6 +18,7 @@
 #include "logger.h"
 #include "node_local_collector_module.h"
 #include <string>
+#include <sys/stat.h>
 #include <unordered_map>
 #include <vector>
 
@@ -71,8 +72,13 @@ namespace lcne::topo{
                                                    ubcs_pair, port_pair);
     if (json_ret == RACK_FAIL)
     {
-      LOG_ERROR << "LcneTopology::CreateTopolgy-Error: failed to write json file";
-      return LCNE_FAIL;
+        LOG_ERROR << "LcneTopology::CreateTopolgy-Error: failed to write json file";
+        return LCNE_FAIL;
+    }
+    if (::chmod(lcne::common::JSON_OUTPUT_FILE, lcne::common::JSON_OUTPUT_FILE_PERM_640) != 0) {
+        LOG_ERROR << "LcneTopology::CreateTopolgy-Error: failed to set file mode 0640 for output file "
+                  << lcne::common::JSON_OUTPUT_FILE;
+        return LCNE_FAIL;
     }
 #ifdef ENABLE_DAEMON_FEATURE
     ret = nodeLocalCollectorModule->InsertDeviceData(nodes);
@@ -237,4 +243,4 @@ namespace lcne::topo{
   }
 
 } // namespace lcne::topo
-
+
