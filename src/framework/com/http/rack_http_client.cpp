@@ -10,15 +10,15 @@
  * See the Mulan PSL v2 for more details.
  */
 
+#define MODULE_NAME "COM-HTTP"
+
 #include "http/rack_http_client.h"
-#include "logger.h"
 #include <httplib.h>
 #include <sstream>
+#include "logger.h"
 
 namespace rack::com {
-RackHttpClient::RackHttpClient(std::string baseUrl) : baseUrl_(baseUrl)
-{
-}
+RackHttpClient::RackHttpClient(std::string baseUrl) : baseUrl_(baseUrl) {}
 
 RackComResult<RackHttpResponse> RackHttpClient::Do(const RackComContext &context, const RackHttpRequest &request)
 {
@@ -70,8 +70,7 @@ RackComResult<RackHttpResponse> RackHttpClient::Do(const RackComContext &context
     if (!res) {
         std::ostringstream oss;
         oss << "http request failed"
-            << ", method: " << MethodToString(request.method)
-            << ", url: " << baseUrl_ << request.path
+            << ", method: " << MethodToString(request.method) << ", url: " << baseUrl_ << request.path
             << ", error: " << httplib::to_string(res.error());
         LOG_ERROR << "RackHttpClient::Do-Error: " << oss.str();
         return RackComResult<RackHttpResponse>::Error(RackComError::UNAVAILABLE, oss.str());

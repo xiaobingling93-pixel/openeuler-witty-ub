@@ -12,62 +12,16 @@
 
 #pragma once
 
-#include <atomic>
-#include <condition_variable>
-#include <fstream>
-#include <mutex>
-#include <thread>
-
-#include "rack_module.h"
-#include "log_reader.h"
+#include "rack_error.h"
 
 namespace failure::log {
-    class LogCollector final {
-    public:
-        RackResult Initialize();
-        void UnInitialize();
-        RackResult Start();
-        void Stop();
+class LogCollector {
+public:
+    virtual ~LogCollector() = default;
 
-    private:
-        RackResult InitIO();
-        RackResult ParseArgs();
-        RackResult ParsePodMode(const std::unordered_map<std::string, std::string>& argMap);
-        RackResult ParseLogPath(const std::unordered_map<std::string, std::string>& argMap);
-        RackResult ParseQueryCondition(const std::unordered_map<std::string, std::string>& argMap);
-        RackResult CreateReaders();
-        void CollectUmqMetadata(
-            std::unordered_map<std::string, std::vector<FailureEvent>>& eventsMap,
-            std::vector<FailureMetadata>& localMetadata
-        );
-        void CollectCorrelatedLogs(
-            std::unordered_map<std::string, std::vector<FailureEvent>>& eventsMap,
-            std::vector<FailureMetadata>& localMetadata
-        );
-        RackResult CorrelateEvents(std::unordered_map<std::string, std::vector<FailureEvent>>& eventsMap);
-        void Save();
-
-        bool IsValidPodId(const std::string& podId) const;
-        bool IsValidPath(const std::string& p) const;
-        bool IsValidEid(const std::string& eid) const;
-        bool IsValidJettyId(const std::string& jettyId) const;
-
-    private:
-        bool podMode_{ false };
-        std::unordered_map<std::string, std::vector<PathCell>> customizedLogPath_;
-        std::unordered_map<std::string, std::unordered_set<std::string>> allowedPodIds_;
-        FailureEventQuery query_;
-
-        std::vector<std::thread> workerThreads_;
-
-        std::vector<std::shared_ptr<LogReader>> readers_;
-        std::vector<FailureMetadata> metadata_;
-
-        std::mutex stateMutex_;
-        std::condition_variable stateCond_;
-        bool startInProgress_{ false };
-        std::atomic_bool readerActive_{ false };
-        std::mutex metadataMutex_;
-        std::mutex ofsMutex_;
-    };
-}
+    virtual RackResult Initialize() = 0;
+    virtual void UnInitialize() = 0;
+    virtual RackResult Start() = 0;
+    virtual void Stop() = 0;
+};
+} // namespace failure::log

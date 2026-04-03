@@ -15,13 +15,13 @@
 #include <iostream>
 
 #include "log_local_collector_module.h"
-#include "ubse_context.h"
 #include "logger.h"
+#include "ubse_context.h"
 
 using namespace ubse::context;
 using namespace failure::log;
 
-UbseContext& g_rackContext = UbseContext::GetInstance();
+UbseContext &g_rackContext = UbseContext::GetInstance();
 
 void RegisterModules()
 {
@@ -40,8 +40,7 @@ void CreateModules()
         LOG_DEBUG << "UbseContext::CreateModules: Creating module " << type.name();
         if (type == typeid(LogLocalCollectorModule)) {
             g_rackContext.InitModule<LogLocalCollectorModule>(RackModule::CreateModule<LogLocalCollectorModule>());
-        }
-        else {
+        } else {
             LOG_ERROR << "CreateModule-Error: module " << type.name() << " not defined";
         }
     }
@@ -66,7 +65,7 @@ void UnInitializeAndStopModules()
     }
 }
 
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
     rack::logger::init(argv[0]);
     LOG_DEBUG << "Start InitDependencies";

@@ -46,10 +46,10 @@ sudo make
 * 在witty-ub根目录下执行以下命令，输出对应json格式的拓扑信息到文件```/var/witty-ub```目录下```failiure-event.json```文件中。
 * 命令行参数详细解析请见[witty-ub工具使用指导](./witty-ub数据采集工具指导.md)
     ```shell
-    witty-ub-log --pod_mode on \
-    --ubsocket_log_path "pod-name1:/log/messages/path/to/pod-name1,pod-name2:/log/messages/path/to/pod-name2" \
-    --umq_log_path "pod-name1:/path/to/pod-name1/umdk/umq/,pod-name2:/path/to/pod-name2/umdk/umq/" \
-    --liburma_log_path "pod-name1:/path/to/pod-name1/umdk/urma/,pod-name2:/path/to/pod-name2/umdk/urma/" \
-    --libudma_log_path "pod-name1:/log/messages/path/to/pod-name1,pod-name2:/log/messages/path/to/pod-name2" \
-    --strat_time 2026-03-09 00:00:00 --end_time 2026-03-10 00:00:00
+    witty-ub-log --pod-mode on \
+    --ubsocket-log-path "pod-name1:/log/messages/path/to/pod-name1,pod-name2:/log/messages/path/to/pod-name2" \
+    --umq-log-path "pod-name1:/path/to/pod-name1/umdk/umq/,pod-name2:/path/to/pod-name2/umdk/umq/" \
+    --liburma-log-path "pod-name1:/path/to/pod-name1/umdk/urma/,pod-name2:/path/to/pod-name2/umdk/urma/" \
+    --libudma-log-path "pod-name1:/log/messages/path/to/pod-name1,pod-name2:/log/messages/path/to/pod-name2" \
+    --start-time "2026-03-09 00:00:00" --end-time "2026-03-10 00:00:00"
     ```

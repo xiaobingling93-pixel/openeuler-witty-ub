@@ -9,11 +9,13 @@
 ## See the Mulan PSL v2 for more details.
 
 add_library(failure_log STATIC
-    log_collector.cpp
+    log_callstack_collector.cpp
+    log_failure_collector.cpp
     log_local_collector_module.cpp
     log_parser.cpp
     log_reader.cpp
     log_template.cpp
+    log_graph.cpp
 )
 target_include_directories(failure_log PUBLIC 
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -52,4 +54,4 @@ target_link_libraries(failure_log
         ${RE2_TARGET}
 )
 find_package(jsoncpp REQUIRED)
-target_link_libraries(failure_log PRIVATE jsoncpp_lib)
+target_link_libraries(failure_log PRIVATE rack_http jsoncpp_lib)
