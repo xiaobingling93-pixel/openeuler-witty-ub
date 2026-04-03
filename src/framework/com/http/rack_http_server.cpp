@@ -200,11 +200,11 @@ void RackHttpServer::HandlerRequest(const httplib::Request &req, httplib::Respon
     RackComContext ctx;
     ctx.cancelled = nullptr;
     ctx.deadline = std::chrono::steady_clock::time_point::max();
-    for (const auto &[k, v] : req.headers) {
-        ctx.metadata.emplace(k, v);
-    }
 
     RackHttpRequest request{};
+    for (const auto &[k, v] : req.headers) {
+        request.headers.emplace(k, v);
+    }
     //Set request method in this function
     if (ValidateHttpRequest(req, request) != RACK_OK) {
         res.status = BadRequest_400;

@@ -11,7 +11,9 @@
  */
 
 #include "http/rack_http_client.h"
+#include "logger.h"
 #include <httplib.h>
+#include <sstream>
 
 namespace rack::com {
 RackHttpClient::RackHttpClient(std::string baseUrl) : baseUrl_(baseUrl)
@@ -23,7 +25,7 @@ RackComResult<RackHttpResponse> RackHttpClient::Do(const RackComContext &context
     httplib::Client cli(baseUrl_);
 
     httplib::Headers headers;
-    for (const auto &[k, v] : context.metadata) {
+    for (const auto &[k, v] : request.headers) {
         headers.emplace(k, v);
     }
 
@@ -37,6 +39,7 @@ RackComResult<RackHttpResponse> RackHttpClient::Do(const RackComContext &context
             auto it = headers.find("Content-Type");
             if (it != headers.end()) {
                 content_type = it->second;
+                headers.erase("Content-Type");
             }
 
             res = cli.Post(request.path, headers, request.body, content_type);
@@ -47,6 +50,7 @@ RackComResult<RackHttpResponse> RackHttpClient::Do(const RackComContext &context
             auto it = headers.find("Content-Type");
             if (it != headers.end()) {
                 content_type = it->second;
+                headers.erase("Content-Type");
             }
 
             res = cli.Put(request.path, headers, request.body, content_type);
@@ -64,7 +68,13 @@ RackComResult<RackHttpResponse> RackHttpClient::Do(const RackComContext &context
 
     httplib::Response resp;
     if (!res) {
-        return RackComResult<RackHttpResponse>::Error(RackComError::UNAVAILABLE, "http request failed");
+        std::ostringstream oss;
+        oss << "http request failed"
+            << ", method: " << MethodToString(request.method)
+            << ", url: " << baseUrl_ << request.path
+            << ", error: " << httplib::to_string(res.error());
+        LOG_ERROR << "RackHttpClient::Do-Error: " << oss.str();
+        return RackComResult<RackHttpResponse>::Error(RackComError::UNAVAILABLE, oss.str());
     }
     resp = res.value();
 
