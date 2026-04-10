@@ -369,18 +369,15 @@ RackResult LogCallstackCollector::ParseCompileCommandsPath(const std::unordered_
             input_.compileCommandsPaths[component] = explicitIt->second;
             return;
         }
-
         const auto srcIt = input_.componentsPaths.find(component);
         if (srcIt == input_.componentsPaths.end()) {
             return;
         }
-
         const std::filesystem::path guessedPath = std::filesystem::path(srcIt->second) / "compile_commands.json";
         if (std::filesystem::exists(guessedPath) && std::filesystem::is_regular_file(guessedPath)) {
             input_.compileCommandsPaths[component] = guessedPath.string();
         }
     };
-
     handleCompileCommandsPath("ubsocket");
     handleCompileCommandsPath("umq");
     handleCompileCommandsPath("liburma");

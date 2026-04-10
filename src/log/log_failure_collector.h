@@ -26,10 +26,10 @@
 namespace failure::log {
 class LogFailureCollector final : public LogCollector {
 public:
-    virtual RackResult Initialize() override;
-    virtual void UnInitialize() override;
-    virtual RackResult Start() override;
-    virtual void Stop() override;
+    RackResult Initialize() override;
+    void UnInitialize() override;
+    RackResult Start() override;
+    void Stop() override;
 
 private:
     RackResult InitIO();
@@ -38,6 +38,9 @@ private:
     RackResult ParseLogPath(const std::unordered_map<std::string, std::string> &argMap);
     RackResult HandleLogPath(const std::unordered_map<std::string, std::string> &argMap, const std::string &component,
                              bool podRequired, bool podSplitAndStrip);
+    RackResult HandleSingleLogPathArg(const std::string &arg, const std::string &component, const std::string &path);
+    RackResult HandlePodSplitLogPathArg(const std::string &arg, const std::string &component,
+                                        const std::string &rawPodPath);
     RackResult ParseQueryCondition(const std::unordered_map<std::string, std::string> &argMap);
     RackResult ParseTimeRange(const std::unordered_map<std::string, std::string> &argMap);
     RackResult ParseEventTypes(const std::unordered_map<std::string, std::string> &argMap);
@@ -45,6 +48,9 @@ private:
     RackResult ParseLocalEids(const std::unordered_map<std::string, std::string> &argMap);
     RackResult ParseJettyIds(const std::unordered_map<std::string, std::string> &argMap);
     RackResult CreateReaders();
+    RackResult OpenFailureModeFile(std::ifstream &ifs) const;
+    RackResult ParseFailureModes(std::ifstream &ifs, std::vector<FailureMode> &modes) const;
+    std::vector<PathCell> ExpandPathCells(const FailureMode &mode, const PathCell &pathCell) const;
     RackResult BuildGraph();
     void ReaderLoopOnce(const std::shared_ptr<LogReader> &reader,
                         std::unordered_map<std::string, std::vector<FailureEvent>> &eventsMap,

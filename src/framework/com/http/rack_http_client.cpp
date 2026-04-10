@@ -16,6 +16,18 @@
 #include <httplib.h>
 #include "logger.h"
 
+template <typename Sender>
+httplib::Result SendWithBody(httplib::Headers &headers, Sender &&sender)
+{
+    std::string content_type = "text/plain";
+    auto it = headers.find("Content-Type");
+    if (it != headers.end()) {
+        content_type = it->second;
+        headers.erase("Content-Type");
+    }
+    return sender(content_type);
+}
+
 namespace rack::com {
 RackHttpClient::RackHttpClient(std::string baseUrl) : baseUrl_(baseUrl) {}
 
@@ -30,26 +42,16 @@ RackComResult<RackHttpResponse> RackHttpClient::Do(const RackComContext &context
         case RackHttpMethod::GET:
             res = cli.Get(request.path, headers);
             break;
-        case RackHttpMethod::POST: {
-            std::string content_type = "text/plain";
-            auto it = headers.find("Content-Type");
-            if (it != headers.end()) {
-                content_type = it->second;
-                headers.erase("Content-Type");
-            }
-            res = cli.Post(request.path, headers, request.body, content_type);
+        case RackHttpMethod::POST:
+            res = SendWithBody(headers, [&cli, &request, &headers](const std::string &content_type) {
+                return cli.Post(request.path, headers, request.body, content_type);
+            });
             break;
-        }
-        case RackHttpMethod::PUT: {
-            std::string content_type = "text/plain";
-            auto it = headers.find("Content-Type");
-            if (it != headers.end()) {
-                content_type = it->second;
-                headers.erase("Content-Type");
-            }
-            res = cli.Put(request.path, headers, request.body, content_type);
+        case RackHttpMethod::PUT:
+            res = SendWithBody(headers, [&cli, &request, &headers](const std::string &content_type) {
+                return cli.Put(request.path, headers, request.body, content_type);
+            });
             break;
-        }
         case RackHttpMethod::DELETE_:
             res = cli.Delete(request.path, headers);
             break;
@@ -66,11 +68,9 @@ RackComResult<RackHttpResponse> RackHttpClient::Do(const RackComContext &context
     }
     httplib::Response resp = res.value();
     RackHttpResponse out;
-    out.status = resp.status;
-    out.body = resp.body;
-    for (const auto &[k, v] : resp.headers) {
+    out.status = resp.status; out.body = resp.body;
+    for (const auto &[k, v] : resp.headers)
         out.headers[k] = v;
-    }
     return RackComResult<RackHttpResponse>::Ok(std::move(out));
 }
 } // namespace rack::com

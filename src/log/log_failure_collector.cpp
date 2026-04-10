@@ -134,10 +134,7 @@ void LogFailureCollector::ReaderLoopOnce(const std::shared_ptr<LogReader> &reade
     try {
         reader->CreateHandle();
         handleCreated = true;
-        while (true) {
-            if (!readerActive_.load(std::memory_order_acquire)) {
-                break;
-            }
+        while (readerActive_.load(std::memory_order_acquire)) {
             auto event = reader->ReadOnce();
             if (!event) {
                 break;
@@ -316,49 +313,57 @@ RackResult LogFailureCollector::HandleLogPath(const std::unordered_map<std::stri
         if (it == argMap.end()) {
             return RACK_OK;
         }
-        if (!podSplitAndStrip) {
-            if (!IsValidPath(it->second) != RACK_OK) {
-                LOG_ERROR << "invalid argument: " << arg;
-                return RACK_FAIL;
-            }
-            customizedLogPath_[component].emplace_back(std::nullopt, it->second);
-            return RACK_OK;
+        if (podSplitAndStrip) {
+            return HandlePodSplitLogPathArg(arg, component, it->second);
         }
-        std::vector<std::string> entries;
-        failure::Split(entries, it->second, ',');
-        if (entries.empty()) {
-            LOG_ERROR << "invalid argument " << arg << ": " << it->second
-                      << ", expected \"<pod-id1>:<path1>,<pod-id2>:<path2>,...\"";
-            return RACK_FAIL;
-        }
-        for (const std::string &entry : entries) {
-            auto pos = entry.find(':');
-            if (pos == std::string::npos) {
-                LOG_ERROR << "invalid argument " << arg << ": " << entry << ", expected \"<pod-id>:<path>\"";
-                return RACK_FAIL;
-            }
-            const std::string &podId = entry.substr(0, pos);
-            if (allowedPodIds_.find(component) != allowedPodIds_.end() &&
-                allowedPodIds_[component].find(podId) != allowedPodIds_[component].end()) {
-                LOG_ERROR << "duplicated pod-id: " << podId << " for component " << component;
-                return RACK_FAIL;
-            }
-            const std::string &path = entry.substr(pos + 1);
-            if (!IsValidPodId(podId) || !IsValidPath(path)) {
-                LOG_ERROR << "invalid argument: " << arg;
-                return RACK_FAIL;
-            }
-            customizedLogPath_[component].emplace_back(podId, path);
-            allowedPodIds_[component].insert(podId);
-        }
+        return HandleSingleLogPathArg(arg, component, it->second);
+    }
+    if (it == argMap.end()) {
         return RACK_OK;
     }
-    if (it != argMap.end()) {
-        if (!IsValidPath(it->second) != RACK_OK) {
+    return HandleSingleLogPathArg(arg, component, it->second);
+}
+
+RackResult LogFailureCollector::HandleSingleLogPathArg(const std::string &arg, const std::string &component,
+                                                       const std::string &path)
+{
+    if (!IsValidPath(path)) {
+        LOG_ERROR << "invalid argument: " << arg;
+        return RACK_FAIL;
+    }
+    customizedLogPath_[component].emplace_back(std::nullopt, path);
+    return RACK_OK;
+}
+
+RackResult LogFailureCollector::HandlePodSplitLogPathArg(const std::string &arg, const std::string &component,
+                                                         const std::string &rawPodPath)
+{
+    std::vector<std::string> entries;
+    failure::Split(entries, rawPodPath, ',');
+    if (entries.empty()) {
+        LOG_ERROR << "invalid argument " << arg << ": " << rawPodPath
+                  << ", expected \"<pod-id1>:<path1>,<pod-id2>:<path2>,...\"";
+        return RACK_FAIL;
+    }
+    for (const std::string &entry : entries) {
+        auto pos = entry.find(':');
+        if (pos == std::string::npos) {
+            LOG_ERROR << "invalid argument " << arg << ": " << entry << ", expected \"<pod-id>:<path>\"";
+            return RACK_FAIL;
+        }
+        const std::string podId = entry.substr(0, pos);
+        if (allowedPodIds_.find(component) != allowedPodIds_.end() &&
+            allowedPodIds_[component].find(podId) != allowedPodIds_[component].end()) {
+            LOG_ERROR << "duplicated pod-id: " << podId << " for component " << component;
+            return RACK_FAIL;
+        }
+        const std::string path = entry.substr(pos + 1);
+        if (!IsValidPodId(podId) || !IsValidPath(path)) {
             LOG_ERROR << "invalid argument: " << arg;
             return RACK_FAIL;
         }
-        customizedLogPath_[component].emplace_back(std::nullopt, it->second);
+        customizedLogPath_[component].emplace_back(podId, path);
+        allowedPodIds_[component].insert(podId);
     }
     return RACK_OK;
 }
@@ -519,56 +524,19 @@ RackResult LogFailureCollector::ParseJettyIds(const std::unordered_map<std::stri
 
 RackResult LogFailureCollector::CreateReaders()
 {
-    std::ifstream ifs(FAILURE_MODE_FILE);
-    if (!ifs.is_open()) {
-        LOG_DEBUG << "file not found: " << FAILURE_MODE_FILE << ", try dev path...";
-        ifs.clear();
-        ifs.open(FAILURE_MODE_FILE_DEV);
-    }
-    if (!ifs.is_open()) {
-        LOG_ERROR << "failed to open input file: " << FAILURE_MODE_FILE << " or " << FAILURE_MODE_FILE_DEV;
+    std::ifstream ifs;
+    if (OpenFailureModeFile(ifs) != RACK_OK) {
         return RACK_FAIL;
     }
-    Json::CharReaderBuilder builder;
-    Json::Value items(Json::arrayValue);
-    std::string err;
-    if (!Json::parseFromStream(builder, ifs, &items, &err)) {
-        LOG_ERROR << "failed to parse json: " << err;
-        return RACK_FAIL;
-    }
-
     std::vector<FailureMode> modes;
-    modes.reserve(items.size());
-    for (const Json::Value &item : items) {
-        FailureMode mode = FailureMode::FromJson(item);
-        auto it = customizedLogPath_.find(mode.component);
-        if (it != customizedLogPath_.end()) {
-            mode.dataSource.pathCells.clear();
-            for (const PathCell &pathCell : it->second) {
-                mode.dataSource.pathCells.push_back(pathCell);
-            }
-        }
-        modes.push_back(mode);
+    if (ParseFailureModes(ifs, modes) != RACK_OK) {
+        return RACK_FAIL;
     }
 
     std::unordered_map<std::string, std::shared_ptr<LogReader>> dataSourceReaderMap;
     for (const FailureMode &mode : modes) {
         for (const PathCell &pathCell : mode.dataSource.pathCells) {
-            std::filesystem::path p = pathCell.path;
-            std::vector<PathCell> fileCells;
-            if (mode.dataSource.option == DataSourceOption::USER) {
-                if (std::filesystem::is_regular_file(p)) {
-                    fileCells.push_back(pathCell);
-                } else if (std::filesystem::is_directory(p)) {
-                    for (const auto &entry : std::filesystem::directory_iterator(p)) {
-                        if (entry.path().extension() == ".log") {
-                            fileCells.emplace_back(pathCell.podId, entry.path().string());
-                        }
-                    }
-                }
-            } else {
-                fileCells.push_back(pathCell);
-            }
+            std::vector<PathCell> fileCells = ExpandPathCells(mode, pathCell);
             for (const PathCell &fileCell : fileCells) {
                 std::string key = fileCell.podId.value_or("null") + " " + fileCell.path;
                 auto it = dataSourceReaderMap.find(key);
@@ -587,6 +555,65 @@ RackResult LogFailureCollector::CreateReaders()
         readers_.push_back(std::move(reader));
     }
     return RACK_OK;
+}
+
+RackResult LogFailureCollector::OpenFailureModeFile(std::ifstream &ifs) const
+{
+    ifs.open(FAILURE_MODE_FILE);
+    if (!ifs.is_open()) {
+        LOG_DEBUG << "file not found: " << FAILURE_MODE_FILE << ", try dev path...";
+        ifs.clear();
+        ifs.open(FAILURE_MODE_FILE_DEV);
+    }
+    if (!ifs.is_open()) {
+        LOG_ERROR << "failed to open input file: " << FAILURE_MODE_FILE << " or " << FAILURE_MODE_FILE_DEV;
+        return RACK_FAIL;
+    }
+    return RACK_OK;
+}
+
+RackResult LogFailureCollector::ParseFailureModes(std::ifstream &ifs, std::vector<FailureMode> &modes) const
+{
+    Json::CharReaderBuilder builder;
+    Json::Value items(Json::arrayValue);
+    std::string err;
+    if (!Json::parseFromStream(builder, ifs, &items, &err)) {
+        LOG_ERROR << "failed to parse json: " << err;
+        return RACK_FAIL;
+    }
+
+    modes.clear();
+    modes.reserve(items.size());
+    for (const Json::Value &item : items) {
+        FailureMode mode = FailureMode::FromJson(item);
+        auto it = customizedLogPath_.find(mode.component);
+        if (it != customizedLogPath_.end()) {
+            mode.dataSource.pathCells = it->second;
+        }
+        modes.push_back(std::move(mode));
+    }
+    return RACK_OK;
+}
+
+std::vector<PathCell> LogFailureCollector::ExpandPathCells(const FailureMode &mode, const PathCell &pathCell) const
+{
+    if (mode.dataSource.option != DataSourceOption::USER) {
+        return {pathCell};
+    }
+    std::filesystem::path p = pathCell.path;
+    if (std::filesystem::is_regular_file(p)) {
+        return {pathCell};
+    }
+    if (!std::filesystem::is_directory(p)) {
+        return {};
+    }
+    std::vector<PathCell> fileCells;
+    for (const auto &entry : std::filesystem::directory_iterator(p)) {
+        if (entry.path().extension() == ".log") {
+            fileCells.emplace_back(pathCell.podId, entry.path().string());
+        }
+    }
+    return fileCells;
 }
 
 RackResult LogFailureCollector::BuildGraph()
