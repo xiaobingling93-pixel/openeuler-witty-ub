@@ -68,7 +68,8 @@ RackComResult<RackHttpResponse> RackHttpClient::Do(const RackComContext &context
     }
     httplib::Response resp = res.value();
     RackHttpResponse out;
-    out.status = resp.status; out.body = resp.body;
+    out.status = resp.status;
+    out.body = resp.body;
     for (const auto &[k, v] : resp.headers)
         out.headers[k] = v;
     return RackComResult<RackHttpResponse>::Ok(std::move(out));

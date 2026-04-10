@@ -347,7 +347,6 @@ RackResult LogCallstackCollector::ParseSrcPath(const std::unordered_map<std::str
         input_.componentsPaths[component] = it->second;
         return RACK_OK;
     };
-
     if (handleSrcPath("ubsocket") != RACK_OK)
         return RACK_FAIL;
     if (handleSrcPath("umq") != RACK_OK)
@@ -356,7 +355,6 @@ RackResult LogCallstackCollector::ParseSrcPath(const std::unordered_map<std::str
         return RACK_FAIL;
     if (handleSrcPath("libudma") != RACK_OK)
         return RACK_FAIL;
-
     return RACK_OK;
 }
 
