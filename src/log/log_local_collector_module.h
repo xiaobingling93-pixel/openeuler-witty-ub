@@ -17,21 +17,21 @@
 #include "log_collector.h"
 
 namespace failure::log {
-    using namespace rack::module;
+using namespace rack::module;
 
-    class LogLocalCollectorModule final : public RackModule {
-    public:
-        LogLocalCollectorModule();
-        ~LogLocalCollectorModule() override = default;
+class LogLocalCollectorModule final : public RackModule {
+public:
+    LogLocalCollectorModule();
+    ~LogLocalCollectorModule() override = default;
 
-        RackResult Initialize() override;
-        void UnInitialize() override;
-        RackResult Start() override;
-        void Stop() override;
+    RackResult Initialize() override;
+    void UnInitialize() override;
+    RackResult Start() override;
+    void Stop() override;
 
-        std::shared_ptr<LogCollector> GetCollector();
+    std::shared_ptr<LogCollector> GetCollector() const;
 
-    private:
-        std::shared_ptr<LogCollector> collector_;
-    };
-}
+private:
+    std::shared_ptr<LogCollector> collector_;
+};
+} // namespace failure::log

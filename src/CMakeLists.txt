@@ -41,7 +41,7 @@ add_executable(witty-ub-log
     witty_ub_log_main.cpp
 )
 target_include_directories(witty-ub-log PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(witty-ub-log PRIVATE ubse_context failure_log)
+target_link_libraries(witty-ub-log PRIVATE ubse_context failure_log rack_http)
 
 add_executable(witty-ub-topo
     witty_ub_topo_main.cpp

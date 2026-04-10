@@ -124,8 +124,8 @@ namespace lcne::common
     rack::com::RackHttpClient client(std::string(LCNE_URL) + ":" +
                                      std::string(LCNE_PORT));
     rack::com::RackComContext ctx;
-    ctx.metadata["Content-Type"] = LCNE_CONTENT_TYPE;
     rack::com::RackHttpRequest req;
+    req.headers["Content-Type"] = LCNE_CONTENT_TYPE;
     req.method = rack::com::RackHttpMethod::GET;
     req.path = std::string(req_path);
     LOG_INFO << "getHttpData-Info: send request to "
@@ -193,13 +193,12 @@ namespace lcne::common
   }
   LcneResult postLinkInfoNotify()
   {
-
     rack::com::RackHttpClient client(std::string(LCNE_URL) + ":" +
                                      std::string(LCNE_PORT));
     rack::com::RackComContext ctx;
-    ctx.metadata["Content-Type"] = LCNE_CONTENT_TYPE;
-    ctx.metadata["Accept"] = LCNE_CONTENT_TYPE;
     rack::com::RackHttpRequest req;
+    req.headers["Content-Type"] = LCNE_CONTENT_TYPE;
+    req.headers["Accept"] = LCNE_CONTENT_TYPE;
     req.method = rack::com::RackHttpMethod::POST;
     req.path = std::string(LCNE_NOTIFY_LINK_REQ_PATH);
     std::string reqBodyStr;
