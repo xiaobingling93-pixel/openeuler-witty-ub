@@ -10,7 +10,8 @@
  * See the Mulan PSL v2 for more details.
  */
 
-#pragma once
+#ifndef LOG_GRAPH_H
+#define LOG_GRAPH_H
 
 #include <cstddef>
 #include <unordered_set>
@@ -34,6 +35,9 @@ public:
     const KeyFuncRoleMap &GetKeyFuncRoleMap() const;
 
 private:
+    RackResult ValidateGraphRoot(const Json::Value &root, const Json::Value *&nodes, const Json::Value *&edges) const;
+    RackResult BuildNodes(const Json::Value &nodes, CallGraph &graph) const;
+    RackResult BuildEdges(const Json::Value &edges, CallGraph &graph) const;
     void CollectUpstreamNodes(size_t start, size_t maxLevel, std::unordered_set<size_t> &selected) const;
     void CollectDownstreamNodes(size_t start, size_t maxLevel, std::unordered_set<size_t> &selected) const;
     RackResult ReadJson(Json::Value &root, const std::string &path) const;
@@ -47,3 +51,4 @@ private:
     KeyFuncRoleMap keyFuncRoleMap_;
 };
 } // namespace failure::log
+#endif // LOG_GRAPH_H

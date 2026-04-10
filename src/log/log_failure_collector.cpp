@@ -36,10 +36,25 @@ constexpr const int LOCAL_EID_IDX = 1;
 constexpr const int LOCAL_JETTY_ID_IDX = 2;
 constexpr const int REMOTE_EID_IDX = 3;
 constexpr const int REMOTE_JETTY_ID_IDX = 4;
+constexpr const int POD_ID_MAX_LENGTH = 253;
+constexpr const int EID_PART_LENGTH = 8;
 
 inline static const re2::RE2 biEndRe(
     R"(local eid: ([0-9a-f:]+), local jetty_id: (\d+), remote eid: ([0-9a-f:]+), remote jetty_id: (\d+))");
 inline static const re2::RE2 singleEndRe(R"(eid: ([0-9a-f:]+), jetty_id: (\d+))");
+
+bool IsResourceScopedComponent(const std::string &component)
+{
+    return component == "urmacore" || component == "udmacore" || component == "libudma" || component == "ubsocket";
+}
+
+bool MatchProgramProc(const FailureEvent &event, const FailureMetadata &meta)
+{
+    auto itProgramName = event.attributes.find("program_name");
+    auto itProcId = event.attributes.find("proc_id");
+    return itProgramName != event.attributes.end() && itProcId != event.attributes.end() &&
+           itProgramName->second == meta.programName && itProcId->second == meta.procId;
+}
 
 void CacheUmqEndpointFields(FailureEvent &event)
 {
@@ -69,6 +84,24 @@ void CacheUmqEndpointFields(FailureEvent &event)
     }
 }
 
+bool MatchUmqEndpoints(FailureEvent &event, const FailureMetadata &meta)
+{
+    CacheUmqEndpointFields(event);
+    auto localEidIt = event.attributes.find("local_eid");
+    auto localJettyIdIt = event.attributes.find("local_jetty_id");
+    std::optional<std::string> remoteEid;
+    std::optional<std::string> remoteJettyId;
+    auto remoteEidIt = event.attributes.find("remote_eid");
+    auto remoteJettyIdIt = event.attributes.find("remote_jetty_id");
+    if (remoteEidIt != event.attributes.end())
+        remoteEid = remoteEidIt->second;
+    if (remoteJettyIdIt != event.attributes.end())
+        remoteJettyId = remoteJettyIdIt->second;
+    return localEidIt != event.attributes.end() && localJettyIdIt != event.attributes.end() &&
+           localEidIt->second == meta.localEid && localJettyIdIt->second == meta.localJettyId &&
+           remoteEid == meta.remoteEid && remoteJettyId == meta.remoteJettyId;
+}
+
 RackResult LogFailureCollector::Initialize()
 {
     if (InitIO() != RACK_OK) {
@@ -92,49 +125,52 @@ RackResult LogFailureCollector::Initialize()
 
 void LogFailureCollector::UnInitialize() {}
 
+void LogFailureCollector::ReaderLoopOnce(const std::shared_ptr<LogReader> &reader,
+                                         std::unordered_map<std::string, std::vector<FailureEvent>> &eventsMap,
+                                         std::mutex &eventsMapMutex)
+{
+    std::unordered_map<std::string, std::vector<FailureEvent>> localEventsMap;
+    bool handleCreated = false;
+    try {
+        reader->CreateHandle();
+        handleCreated = true;
+        while (true) {
+            if (!readerActive_.load(std::memory_order_acquire)) {
+                break;
+            }
+            auto event = reader->ReadOnce();
+            if (!event) {
+                break;
+            }
+            localEventsMap[event->component].push_back(std::move(*event));
+        }
+    } catch (const std::exception &e) {
+        LOG_ERROR << "reader loop failed: " << e.what();
+        return;
+    }
+
+    if (handleCreated) {
+        try {
+            reader->DestroyHandle();
+        } catch (const std::exception &e) {
+            LOG_ERROR << "failed to destroy handle: " << e.what();
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lk(eventsMapMutex);
+        for (auto &[component, events] : localEventsMap) {
+            auto &dst = eventsMap[component];
+            dst.reserve(dst.size() + events.size());
+            dst.insert(dst.end(), std::make_move_iterator(events.begin()), std::make_move_iterator(events.end()));
+        }
+    }
+}
+
 RackResult LogFailureCollector::Start()
 {
     std::unordered_map<std::string, std::vector<FailureEvent>> eventsMap;
     std::mutex eventsMapMutex;
-
-    auto ReaderLoopOnce = [&](std::shared_ptr<LogReader> reader) {
-        std::unordered_map<std::string, std::vector<FailureEvent>> localEventsMap;
-        bool handleCreated = false;
-        try {
-            reader->CreateHandle();
-            handleCreated = true;
-            while (true) {
-                if (!readerActive_.load(std::memory_order_acquire)) {
-                    break;
-                }
-                auto event = reader->ReadOnce();
-                if (!event) {
-                    break;
-                }
-                localEventsMap[event->component].push_back(std::move(*event));
-            }
-        } catch (const std::exception &e) {
-            LOG_ERROR << "reader loop failed: " << e.what();
-            return;
-        }
-
-        if (handleCreated) {
-            try {
-                reader->DestroyHandle();
-            } catch (const std::exception &e) {
-                LOG_ERROR << "failed to destroy handle: " << e.what();
-            }
-        }
-
-        {
-            std::lock_guard<std::mutex> lk(eventsMapMutex);
-            for (auto &[component, events] : localEventsMap) {
-                auto &dst = eventsMap[component];
-                dst.reserve(dst.size() + events.size());
-                dst.insert(dst.end(), std::make_move_iterator(events.begin()), std::make_move_iterator(events.end()));
-            }
-        }
-    };
 
     {
         std::unique_lock<std::mutex> lk(stateMutex_);
@@ -166,7 +202,8 @@ RackResult LogFailureCollector::Start()
 #ifdef ENABLE_TOOL_FEATURE
         LOG_DEBUG << "LogFailureCollector running in tool mode with per-reader threads (run once)";
         for (auto reader : readers_) {
-            workerThreads_.emplace_back([&, reader]() { ReaderLoopOnce(reader); });
+            workerThreads_.emplace_back(
+                [this, &eventsMap, &eventsMapMutex, reader]() { ReaderLoopOnce(reader, eventsMap, eventsMapMutex); });
         }
         for (auto &t : workerThreads_) {
             if (t.joinable()) {
@@ -245,104 +282,128 @@ RackResult LogFailureCollector::ParsePodMode(const std::unordered_map<std::strin
 
 RackResult LogFailureCollector::ParseLogPath(const std::unordered_map<std::string, std::string> &argMap)
 {
-    auto ComponentOf = [](const std::string &arg) -> std::string {
-        auto p = arg.find('-');
-        return (p == std::string::npos) ? arg : arg.substr(0, p);
-    };
+    if (HandleLogPath(argMap, "ubsocket", true, true) != RACK_OK) {
+        return RACK_FAIL;
+    }
+    if (HandleLogPath(argMap, "umq", true, true) != RACK_OK) {
+        return RACK_FAIL;
+    }
+    if (HandleLogPath(argMap, "liburma", true, true) != RACK_OK) {
+        return RACK_FAIL;
+    }
+    if (HandleLogPath(argMap, "urmacore", false, false) != RACK_OK) {
+        return RACK_FAIL;
+    }
+    if (HandleLogPath(argMap, "libudma", true, true) != RACK_OK) {
+        return RACK_FAIL;
+    }
+    if (HandleLogPath(argMap, "udmacore", false, false) != RACK_OK) {
+        return RACK_FAIL;
+    }
+    return RACK_OK;
+}
 
-    auto HandleLogPath = [&](const std::string &arg, bool podRequired, bool podSplitAndStrip) -> RackResult {
-        const std::string component = ComponentOf(arg);
-        auto it = argMap.find(arg);
-        if (podMode_) {
-            if (podRequired && it == argMap.end()) {
-                LOG_ERROR << "missing argument " << arg << ", required in pod mode";
-                return RACK_FAIL;
-            }
-            if (it == argMap.end()) {
-                return RACK_OK;
-            }
-            if (!podSplitAndStrip) {
-                if (!IsValidPath(it->second) != RACK_OK) {
-                    LOG_ERROR << "invalid argument: " << arg;
-                    return RACK_FAIL;
-                }
-                customizedLogPath_[component].emplace_back(std::nullopt, it->second);
-                return RACK_OK;
-            }
-            std::vector<std::string> entries;
-            failure::Split(entries, it->second, ',');
-            if (entries.empty()) {
-                LOG_ERROR << "invalid argument " << arg << ": " << it->second
-                          << ", expected \"<pod-id1>:<path1>,<pod-id2>:<path2>,...\"";
-                return RACK_FAIL;
-            }
-            for (const std::string &entry : entries) {
-                auto pos = entry.find(':');
-                if (pos == std::string::npos) {
-                    LOG_ERROR << "invalid argument " << arg << ": " << entry << ", expected \"<pod-id>:<path>\"";
-                    return RACK_FAIL;
-                }
-                const std::string &podId = entry.substr(0, pos);
-                if (allowedPodIds_.find(component) != allowedPodIds_.end() &&
-                    allowedPodIds_[component].find(podId) != allowedPodIds_[component].end()) {
-                    LOG_ERROR << "duplicated pod-id: " << podId << " for component " << component;
-                    return RACK_FAIL;
-                }
-                const std::string &path = entry.substr(pos + 1);
-                if (!IsValidPodId(podId) || !IsValidPath(path)) {
-                    LOG_ERROR << "invalid argument: " << arg;
-                    return RACK_FAIL;
-                }
-                customizedLogPath_[component].emplace_back(podId, path);
-                allowedPodIds_[component].insert(podId);
-            }
+RackResult LogFailureCollector::HandleLogPath(const std::unordered_map<std::string, std::string> &argMap,
+                                              const std::string &component, bool podRequired, bool podSplitAndStrip)
+{
+    const std::string arg = component + "-log-path";
+    auto it = argMap.find(arg);
+    if (podMode_) {
+        if (podRequired && it == argMap.end()) {
+            LOG_ERROR << "missing argument " << arg << ", required in pod mode";
+            return RACK_FAIL;
+        }
+        if (it == argMap.end()) {
             return RACK_OK;
         }
-        if (it != argMap.end()) {
+        if (!podSplitAndStrip) {
             if (!IsValidPath(it->second) != RACK_OK) {
                 LOG_ERROR << "invalid argument: " << arg;
                 return RACK_FAIL;
             }
             customizedLogPath_[component].emplace_back(std::nullopt, it->second);
+            return RACK_OK;
+        }
+        std::vector<std::string> entries;
+        failure::Split(entries, it->second, ',');
+        if (entries.empty()) {
+            LOG_ERROR << "invalid argument " << arg << ": " << it->second
+                      << ", expected \"<pod-id1>:<path1>,<pod-id2>:<path2>,...\"";
+            return RACK_FAIL;
+        }
+        for (const std::string &entry : entries) {
+            auto pos = entry.find(':');
+            if (pos == std::string::npos) {
+                LOG_ERROR << "invalid argument " << arg << ": " << entry << ", expected \"<pod-id>:<path>\"";
+                return RACK_FAIL;
+            }
+            const std::string &podId = entry.substr(0, pos);
+            if (allowedPodIds_.find(component) != allowedPodIds_.end() &&
+                allowedPodIds_[component].find(podId) != allowedPodIds_[component].end()) {
+                LOG_ERROR << "duplicated pod-id: " << podId << " for component " << component;
+                return RACK_FAIL;
+            }
+            const std::string &path = entry.substr(pos + 1);
+            if (!IsValidPodId(podId) || !IsValidPath(path)) {
+                LOG_ERROR << "invalid argument: " << arg;
+                return RACK_FAIL;
+            }
+            customizedLogPath_[component].emplace_back(podId, path);
+            allowedPodIds_[component].insert(podId);
         }
         return RACK_OK;
-    };
-    if (HandleLogPath("ubsocket-log-path", true, true) != RACK_OK)
-        return RACK_FAIL;
-    if (HandleLogPath("umq-log-path", true, true) != RACK_OK)
-        return RACK_FAIL;
-    if (HandleLogPath("liburma-log-path", true, true) != RACK_OK)
-        return RACK_FAIL;
-    if (HandleLogPath("urmacore-log-path", false, false) != RACK_OK)
-        return RACK_FAIL;
-    if (HandleLogPath("libudma-log-path", true, true) != RACK_OK)
-        return RACK_FAIL;
-    if (HandleLogPath("udmacore-log-path", false, false) != RACK_OK)
-        return RACK_FAIL;
-
+    }
+    if (it != argMap.end()) {
+        if (!IsValidPath(it->second) != RACK_OK) {
+            LOG_ERROR << "invalid argument: " << arg;
+            return RACK_FAIL;
+        }
+        customizedLogPath_[component].emplace_back(std::nullopt, it->second);
+    }
     return RACK_OK;
 }
 
 RackResult LogFailureCollector::ParseQueryCondition(const std::unordered_map<std::string, std::string> &argMap)
 {
-    std::unordered_map<std::string, std::string>::const_iterator it;
+    if (ParseTimeRange(argMap) != RACK_OK) {
+        return RACK_FAIL;
+    }
+    if (ParseEventTypes(argMap) != RACK_OK) {
+        return RACK_FAIL;
+    }
+    if (ParsePodIds(argMap) != RACK_OK) {
+        return RACK_FAIL;
+    }
+    if (ParseLocalEids(argMap) != RACK_OK) {
+        return RACK_FAIL;
+    }
+    if (ParseJettyIds(argMap) != RACK_OK) {
+        return RACK_FAIL;
+    }
+    return RACK_OK;
+}
 
-    if ((it = argMap.find("start-time")) == argMap.end()) {
+RackResult LogFailureCollector::ParseTimeRange(const std::unordered_map<std::string, std::string> &argMap)
+{
+    auto startIt = argMap.find("start-time");
+    if (startIt == argMap.end()) {
         LOG_ERROR << "missing argument start-time";
         return RACK_FAIL;
     }
-    const std::string &startTimeStr = it->second;
+    const std::string &startTimeStr = startIt->second;
     auto startTime = failure::DatetimeStrToTimestamp(startTimeStr);
     if (!startTime) {
         LOG_ERROR << "invalid argument start-time: " << startTimeStr;
         return RACK_FAIL;
     }
     query_.startTime = *startTime;
-    if ((it = argMap.find("end-time")) == argMap.end()) {
+
+    auto endIt = argMap.find("end-time");
+    if (endIt == argMap.end()) {
         LOG_ERROR << "missing argument end-time";
         return RACK_FAIL;
     }
-    const std::string &endTimeStr = it->second;
+    const std::string &endTimeStr = endIt->second;
     auto endTime = failure::DatetimeStrToTimestamp(endTimeStr);
     if (!endTime) {
         LOG_ERROR << "invalid argument end-time: " << endTimeStr;
@@ -353,80 +414,106 @@ RackResult LogFailureCollector::ParseQueryCondition(const std::unordered_map<std
         LOG_ERROR << "logic error: start-time (" << startTimeStr << ") is later than end-time (" << endTimeStr << ")";
         return RACK_FAIL;
     }
+    return RACK_OK;
+}
 
-    if ((it = argMap.find("event-type")) != argMap.end()) {
-        std::vector<std::string> eventTypes;
-        failure::Split(eventTypes, it->second, ',');
-        if (eventTypes.empty()) {
-            LOG_ERROR << "empty argument event-type";
+RackResult LogFailureCollector::ParseEventTypes(const std::unordered_map<std::string, std::string> &argMap)
+{
+    auto it = argMap.find("event-type");
+    if (it == argMap.end()) {
+        return RACK_OK;
+    }
+    std::vector<std::string> eventTypes;
+    failure::Split(eventTypes, it->second, ',');
+    if (eventTypes.empty()) {
+        LOG_ERROR << "empty argument event-type";
+        return RACK_FAIL;
+    }
+    for (const std::string &eventType : eventTypes) {
+        auto eventTypeOpt = EventTypeOptionFromString(eventType);
+        if (!eventTypeOpt) {
+            LOG_ERROR << "invalid argument event-type: " << eventType;
             return RACK_FAIL;
         }
-        for (const std::string &eventType : eventTypes) {
-            auto eventTypeOpt = EventTypeOptionFromString(eventType);
-            if (!eventTypeOpt) {
-                LOG_ERROR << "invalid argument event-type: " << eventType;
-                return RACK_FAIL;
-            }
-            query_.eventTypes.insert(*eventTypeOpt);
-        }
+        query_.eventTypes.insert(*eventTypeOpt);
     }
-    if ((it = argMap.find("pod-id")) != argMap.end()) {
-        if (!podMode_) {
-            LOG_ERROR << "unexpected arg pod-id in non pod mode";
-            return RACK_FAIL;
-        }
-        if (it->second.empty()) {
-            LOG_ERROR << "empty argument pod-id";
-            return RACK_FAIL;
-        }
-        std::vector<std::string> podIds;
-        failure::Split(podIds, it->second, ',');
-        for (const std::string &podId : podIds) {
-            if (!IsValidPodId(podId)) {
-                return RACK_FAIL;
-            }
-            if (query_.podIds.find(podId) != query_.podIds.end()) {
-                LOG_ERROR << "duplicated pod-id: " << podId;
-                return RACK_FAIL;
-            }
-            for (const auto &[component, podIds] : allowedPodIds_) {
-                if (podIds.find(podId) == podIds.end()) {
-                    LOG_ERROR << "pod-id: " << podId << ", not provided in log path";
-                    return RACK_FAIL;
-                }
-            }
-            query_.podIds.insert(podId);
-        }
-    }
-    if ((it = argMap.find("local-eid")) != argMap.end()) {
-        std::vector<std::string> localEids;
-        failure::Split(localEids, it->second, ',');
-        for (const std::string &localEid : localEids) {
-            if (!IsValidEid(localEid)) {
-                return RACK_FAIL;
-            }
-            if (query_.localEids.find(localEid) != query_.localEids.end()) {
-                LOG_ERROR << "duplicated local-eid: " << localEid;
-                return RACK_FAIL;
-            }
-            query_.localEids.insert(localEid);
-        }
-    }
-    if ((it = argMap.find("jetty-id")) != argMap.end()) {
-        std::vector<std::string> jettyIds;
-        failure::Split(jettyIds, it->second, ',');
-        for (const std::string &jettyId : jettyIds) {
-            if (!IsValidJettyId(jettyId)) {
-                return RACK_FAIL;
-            }
-            if (query_.jettyIds.find(jettyId) != query_.jettyIds.end()) {
-                LOG_ERROR << "duplicated jetty-id: " << jettyId;
-                return RACK_FAIL;
-            }
-            query_.jettyIds.insert(jettyId);
-        }
-    }
+    return RACK_OK;
+}
 
+RackResult LogFailureCollector::ParsePodIds(const std::unordered_map<std::string, std::string> &argMap)
+{
+    auto it = argMap.find("pod-id");
+    if (it == argMap.end()) {
+        return RACK_OK;
+    }
+    if (!podMode_) {
+        LOG_ERROR << "unexpected arg pod-id in non pod mode";
+        return RACK_FAIL;
+    }
+    if (it->second.empty()) {
+        LOG_ERROR << "empty argument pod-id";
+        return RACK_FAIL;
+    }
+    std::vector<std::string> podIds;
+    failure::Split(podIds, it->second, ',');
+    for (const std::string &podId : podIds) {
+        if (!IsValidPodId(podId)) {
+            return RACK_FAIL;
+        }
+        if (query_.podIds.find(podId) != query_.podIds.end()) {
+            LOG_ERROR << "duplicated pod-id: " << podId;
+            return RACK_FAIL;
+        }
+        for (const auto &[component, componentPodIds] : allowedPodIds_) {
+            if (componentPodIds.find(podId) == componentPodIds.end()) {
+                LOG_ERROR << "pod-id: " << podId << ", not provided in log path";
+                return RACK_FAIL;
+            }
+        }
+        query_.podIds.insert(podId);
+    }
+    return RACK_OK;
+}
+
+RackResult LogFailureCollector::ParseLocalEids(const std::unordered_map<std::string, std::string> &argMap)
+{
+    auto it = argMap.find("local-eid");
+    if (it == argMap.end()) {
+        return RACK_OK;
+    }
+    std::vector<std::string> localEids;
+    failure::Split(localEids, it->second, ',');
+    for (const std::string &localEid : localEids) {
+        if (!IsValidEid(localEid)) {
+            return RACK_FAIL;
+        }
+        if (query_.localEids.find(localEid) != query_.localEids.end()) {
+            LOG_ERROR << "duplicated local-eid: " << localEid;
+            return RACK_FAIL;
+        }
+        query_.localEids.insert(localEid);
+    }
+    return RACK_OK;
+}
+
+RackResult LogFailureCollector::ParseJettyIds(const std::unordered_map<std::string, std::string> &argMap)
+{
+    auto it = argMap.find("jetty-id");
+    if (it == argMap.end()) {
+        return RACK_OK;
+    }
+    std::vector<std::string> jettyIds;
+    failure::Split(jettyIds, it->second, ',');
+    for (const std::string &jettyId : jettyIds) {
+        if (!IsValidJettyId(jettyId)) {
+            return RACK_FAIL;
+        }
+        if (query_.jettyIds.find(jettyId) != query_.jettyIds.end()) {
+            LOG_ERROR << "duplicated jetty-id: " << jettyId;
+            return RACK_FAIL;
+        }
+        query_.jettyIds.insert(jettyId);
+    }
     return RACK_OK;
 }
 
@@ -580,9 +667,10 @@ void LogFailureCollector::CollectCorrelatedLogs(std::unordered_map<std::string, 
 {
     for (FailureMetadata &meta : metadata) {
         for (auto &[component, events] : eventsMap) {
-            if (component == "hardware")
+            if (component == "hardware") {
                 continue;
-            bool previousTimeWindow = (component == "ubsocket");
+            }
+            bool previousTimeWindow = component == "ubsocket";
             int64_t startTime = previousTimeWindow ? meta.timestamp : meta.timestamp - TIME_WINDOW_US;
             int64_t endTime = previousTimeWindow ? meta.timestamp + TIME_WINDOW_US : meta.timestamp;
             auto beginIt = std::lower_bound(
@@ -593,38 +681,21 @@ void LogFailureCollector::CollectCorrelatedLogs(std::unordered_map<std::string, 
                 [](int64_t timestamp, const FailureEvent &event) { return timestamp < event.timestamp; });
             for (auto it = beginIt; it != endIt; ++it) {
                 FailureEvent &event = *it;
-                if (podMode_ && event.pathCell.podId && meta.podId && event.pathCell.podId != meta.podId)
+                if (podMode_ && event.pathCell.podId && meta.podId && event.pathCell.podId != meta.podId) {
                     continue;
-                bool resourceMatch = (component == "urmacore" || component == "udmacore" || component == "libudma" ||
-                                      component == "ubsocket");
+                }
+                bool resourceMatch = IsResourceScopedComponent(component);
                 if (component == "umq" || component == "liburma") {
-                    auto itProgramName = event.attributes.find("program_name");
-                    auto itProcId = event.attributes.find("proc_id");
-                    if (itProgramName != event.attributes.end() && itProcId != event.attributes.end() &&
-                        itProgramName->second == meta.programName && itProcId->second == meta.procId) {
+                    if (MatchProgramProc(event, meta)) {
                         resourceMatch = true;
                     }
                 }
-                if (component == "umq") {
-                    CacheUmqEndpointFields(event);
-                    auto localEidIt = event.attributes.find("local_eid");
-                    auto localJettyIdIt = event.attributes.find("local_jetty_id");
-                    std::optional<std::string> remoteEid;
-                    std::optional<std::string> remoteJettyId;
-                    auto remoteEidIt = event.attributes.find("remote_eid");
-                    auto remoteJettyIdIt = event.attributes.find("remote_jetty_id");
-                    if (remoteEidIt != event.attributes.end())
-                        remoteEid = remoteEidIt->second;
-                    if (remoteJettyIdIt != event.attributes.end())
-                        remoteJettyId = remoteJettyIdIt->second;
-                    if (localEidIt != event.attributes.end() && localJettyIdIt != event.attributes.end() &&
-                        localEidIt->second == meta.localEid && localJettyIdIt->second == meta.localJettyId &&
-                        remoteEid == meta.remoteEid && remoteJettyId == meta.remoteJettyId) {
-                        resourceMatch = true;
-                    }
+                if (component == "umq" && MatchUmqEndpoints(event, meta)) {
+                    resourceMatch = true;
                 }
-                if (resourceMatch)
+                if (resourceMatch) {
                     meta.events.push_back(&event);
+                }
             }
         }
         std::sort(meta.events.begin(), meta.events.end(),
@@ -730,8 +801,9 @@ bool LogFailureCollector::IsValidPodId(const std::string &podId) const
         LOG_ERROR << "empty pod-id";
         return false;
     }
-    if (podId.size() > 253) {
-        LOG_ERROR << "invalid pod-id: " << podId << ", expected no more than 253 characters but got " << podId.size();
+    if (podId.size() > POD_ID_MAX_LENGTH) {
+        LOG_ERROR << "invalid pod-id: " << podId << ", expected no more than " << POD_ID_MAX_LENGTH
+                  << " characters but got " << podId.size();
         return false;
     }
     for (size_t i = 0; i < podId.size(); ++i) {
@@ -778,7 +850,7 @@ bool LogFailureCollector::IsValidEid(const std::string &eid) const
     }
     std::vector<std::string> parts;
     failure::Split(parts, eid, ':');
-    if (parts.empty() || parts.size() != 8 ||
+    if (parts.empty() || parts.size() != EID_PART_LENGTH ||
         std::any_of(parts.begin(), parts.end(), [](const std::string &part) { return part.size() != 4; })) {
         LOG_ERROR << "invalid eid: " << eid << ", length must be 128";
         return false;

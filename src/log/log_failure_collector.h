@@ -36,9 +36,19 @@ private:
     RackResult ParseArgs();
     RackResult ParsePodMode(const std::unordered_map<std::string, std::string> &argMap);
     RackResult ParseLogPath(const std::unordered_map<std::string, std::string> &argMap);
+    RackResult HandleLogPath(const std::unordered_map<std::string, std::string> &argMap, const std::string &component,
+                             bool podRequired, bool podSplitAndStrip);
     RackResult ParseQueryCondition(const std::unordered_map<std::string, std::string> &argMap);
+    RackResult ParseTimeRange(const std::unordered_map<std::string, std::string> &argMap);
+    RackResult ParseEventTypes(const std::unordered_map<std::string, std::string> &argMap);
+    RackResult ParsePodIds(const std::unordered_map<std::string, std::string> &argMap);
+    RackResult ParseLocalEids(const std::unordered_map<std::string, std::string> &argMap);
+    RackResult ParseJettyIds(const std::unordered_map<std::string, std::string> &argMap);
     RackResult CreateReaders();
     RackResult BuildGraph();
+    void ReaderLoopOnce(const std::shared_ptr<LogReader> &reader,
+                        std::unordered_map<std::string, std::vector<FailureEvent>> &eventsMap,
+                        std::mutex &eventsMapMutex);
     void CollectMetadata(std::unordered_map<std::string, std::vector<FailureEvent>> &eventsMap,
                          std::vector<FailureMetadata> &metadata);
     void CollectCorrelatedLogs(std::unordered_map<std::string, std::vector<FailureEvent>> &eventsMap,

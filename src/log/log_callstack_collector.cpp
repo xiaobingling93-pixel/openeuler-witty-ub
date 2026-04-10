@@ -48,6 +48,14 @@ constexpr int SESSION_POLL_INTERVAL_MS = 2000;
 constexpr int SESSION_PROGRESS_LOG_INTERVAL_MS = 5000;
 constexpr int SESSION_VISIBLE_TIMEOUT_SEC = 5;
 constexpr int SESSION_POLL_TIMEOUT_SEC = 600;
+constexpr int INT_2 = 2;
+constexpr int INT_3 = 3;
+constexpr int INT_4 = 4;
+constexpr int INT_6 = 6;
+constexpr int INT_8 = 8;
+constexpr int INT_12 = 12;
+constexpr int INT_16 = 16;
+constexpr int INT_18 = 18;
 
 const std::vector<std::string> LogCallstackCollector::allComponents_ = {"ubsocket", "umq", "liburma", "libudma"};
 
@@ -110,29 +118,29 @@ std::string BuildSessionPath(const std::string &pathTemplate, const std::string 
 std::string Base64Encode(const std::string &input)
 {
     std::string out;
-    out.reserve(((input.size() + 2) / 3) * 4);
+    out.reserve(((input.size() + INT_2) / INT_3) * INT_4);
 
     size_t i = 0;
-    for (; i + 2 < input.size(); i += 3) {
-        const uint32_t chunk = (static_cast<uint32_t>(static_cast<unsigned char>(input[i])) << 16) |
-                               (static_cast<uint32_t>(static_cast<unsigned char>(input[i + 1])) << 8) |
+    for (; i + INT_2 < input.size(); i += INT_3) {
+        const uint32_t chunk = (static_cast<uint32_t>(static_cast<unsigned char>(input[i])) << INT_16) |
+                               (static_cast<uint32_t>(static_cast<unsigned char>(input[i + 1])) << INT_8) |
                                static_cast<uint32_t>(static_cast<unsigned char>(input[i + 2]));
-        out.push_back(BASE64_TABLE[(chunk >> 18) & 0x3F]);
-        out.push_back(BASE64_TABLE[(chunk >> 12) & 0x3F]);
-        out.push_back(BASE64_TABLE[(chunk >> 6) & 0x3F]);
+        out.push_back(BASE64_TABLE[(chunk >> INT_18) & 0x3F]);
+        out.push_back(BASE64_TABLE[(chunk >> INT_12) & 0x3F]);
+        out.push_back(BASE64_TABLE[(chunk >> INT_6) & 0x3F]);
         out.push_back(BASE64_TABLE[chunk & 0x3F]);
     }
 
     if (i < input.size()) {
-        uint32_t chunk = static_cast<uint32_t>(static_cast<unsigned char>(input[i])) << 16;
-        out.push_back(BASE64_TABLE[(chunk >> 18) & 0x3F]);
+        uint32_t chunk = static_cast<uint32_t>(static_cast<unsigned char>(input[i])) << INT_16;
+        out.push_back(BASE64_TABLE[(chunk >> INT_18) & 0x3F]);
         if (i + 1 < input.size()) {
-            chunk |= static_cast<uint32_t>(static_cast<unsigned char>(input[i + 1])) << 8;
-            out.push_back(BASE64_TABLE[(chunk >> 12) & 0x3F]);
-            out.push_back(BASE64_TABLE[(chunk >> 6) & 0x3F]);
+            chunk |= static_cast<uint32_t>(static_cast<unsigned char>(input[i + 1])) << INT_8;
+            out.push_back(BASE64_TABLE[(chunk >> INT_12) & 0x3F]);
+            out.push_back(BASE64_TABLE[(chunk >> INT_6) & 0x3F]);
             out.push_back('=');
         } else {
-            out.push_back(BASE64_TABLE[(chunk >> 12) & 0x3F]);
+            out.push_back(BASE64_TABLE[(chunk >> INT_12) & 0x3F]);
             out.push_back('=');
             out.push_back('=');
         }
@@ -206,18 +214,18 @@ std::string LogCallstackCollector::BuildAggregationSkillPrompt(const std::string
 
 std::string LogCallstackCollector::BuildKeyfuncSkillPrompt(const std::string &skill, const SkillInput &input)
 {
-    constexpr const char *KEYFUNC_COMPONENT = "umq"; // 当前默认network模式，非network下分析urma
+    constexpr const char *keyfuncComponent = "umq"; // 当前默认network模式，非network下分析urma
 
     std::string prompt = "请使用 " + skill + " skill 来完成关键函数分析。\n";
     prompt += "请严格按该 skill 的输入输出要求执行，并生成结果文件。\n";
 
-    const auto it = input.componentsPaths.find(KEYFUNC_COMPONENT);
+    const auto it = input.componentsPaths.find(keyfuncComponent);
     if (it == input.componentsPaths.end()) {
         return "";
     }
 
     prompt += "以下为关键函数分析输入：\n";
-    prompt += "- component: " + std::string(KEYFUNC_COMPONENT) + "\n";
+    prompt += "- component: " + std::string(keyfuncComponent) + "\n";
     prompt += "- source_path: " + it->second + "\n";
     prompt += "- keywords: bind,unbind,post,poll\n";
     return prompt;
@@ -329,7 +337,7 @@ RackResult LogCallstackCollector::ParseOpencodeConn(const std::unordered_map<std
 
 RackResult LogCallstackCollector::ParseSrcPath(const std::unordered_map<std::string, std::string> &argMap)
 {
-    auto HandleSrcPath = [&](const std::string &component) -> RackResult {
+    auto handleSrcPath = [this, &argMap](const std::string &component) -> RackResult {
         const std::string arg = component + "-src-path";
         const auto it = argMap.find(arg);
         if (it == argMap.end()) {
@@ -340,13 +348,13 @@ RackResult LogCallstackCollector::ParseSrcPath(const std::unordered_map<std::str
         return RACK_OK;
     };
 
-    if (HandleSrcPath("ubsocket") != RACK_OK)
+    if (handleSrcPath("ubsocket") != RACK_OK)
         return RACK_FAIL;
-    if (HandleSrcPath("umq") != RACK_OK)
+    if (handleSrcPath("umq") != RACK_OK)
         return RACK_FAIL;
-    if (HandleSrcPath("liburma") != RACK_OK)
+    if (handleSrcPath("liburma") != RACK_OK)
         return RACK_FAIL;
-    if (HandleSrcPath("libudma") != RACK_OK)
+    if (handleSrcPath("libudma") != RACK_OK)
         return RACK_FAIL;
 
     return RACK_OK;
@@ -354,7 +362,7 @@ RackResult LogCallstackCollector::ParseSrcPath(const std::unordered_map<std::str
 
 RackResult LogCallstackCollector::ParseCompileCommandsPath(const std::unordered_map<std::string, std::string> &argMap)
 {
-    auto HandleCompileCommandsPath = [&](const std::string &component) {
+    auto handleCompileCommandsPath = [this, &argMap](const std::string &component) {
         const std::string arg = component + "-compile-commands-path";
         const auto explicitIt = argMap.find(arg);
         if (explicitIt != argMap.end()) {
@@ -373,10 +381,10 @@ RackResult LogCallstackCollector::ParseCompileCommandsPath(const std::unordered_
         }
     };
 
-    HandleCompileCommandsPath("ubsocket");
-    HandleCompileCommandsPath("umq");
-    HandleCompileCommandsPath("liburma");
-    HandleCompileCommandsPath("libudma");
+    handleCompileCommandsPath("ubsocket");
+    handleCompileCommandsPath("umq");
+    handleCompileCommandsPath("liburma");
+    handleCompileCommandsPath("libudma");
     return RACK_OK;
 }
 
@@ -597,12 +605,13 @@ RackResult LogCallstackCollector::FetchLatestAssistantMessage() const
     if (parts.isArray()) {
         for (Json::ArrayIndex j = 0; j < parts.size(); ++j) {
             const Json::Value &part = parts[j];
-            if (part["type"].asString() == "text") {
-                if (!text.empty()) {
-                    text += "\n";
-                }
-                text += part["text"].asString();
+            if (part["type"].asString() != "text") {
+                continue;
             }
+            if (!text.empty()) {
+                text += "\n";
+            }
+            text += part["text"].asString();
         }
     }
 

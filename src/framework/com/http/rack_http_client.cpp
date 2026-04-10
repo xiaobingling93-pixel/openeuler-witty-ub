@@ -14,7 +14,6 @@
 
 #include "http/rack_http_client.h"
 #include <httplib.h>
-#include <sstream>
 #include "logger.h"
 
 namespace rack::com {
@@ -23,12 +22,9 @@ RackHttpClient::RackHttpClient(std::string baseUrl) : baseUrl_(baseUrl) {}
 RackComResult<RackHttpResponse> RackHttpClient::Do(const RackComContext &context, const RackHttpRequest &request)
 {
     httplib::Client cli(baseUrl_);
-
     httplib::Headers headers;
-    for (const auto &[k, v] : request.headers) {
+    for (const auto &[k, v] : request.headers)
         headers.emplace(k, v);
-    }
-
     httplib::Result res;
     switch (request.method) {
         case RackHttpMethod::GET:
@@ -41,7 +37,6 @@ RackComResult<RackHttpResponse> RackHttpClient::Do(const RackComContext &context
                 content_type = it->second;
                 headers.erase("Content-Type");
             }
-
             res = cli.Post(request.path, headers, request.body, content_type);
             break;
         }
@@ -52,7 +47,6 @@ RackComResult<RackHttpResponse> RackHttpClient::Do(const RackComContext &context
                 content_type = it->second;
                 headers.erase("Content-Type");
             }
-
             res = cli.Put(request.path, headers, request.body, content_type);
             break;
         }
@@ -65,26 +59,18 @@ RackComResult<RackHttpResponse> RackHttpClient::Do(const RackComContext &context
         default:
             return RackComResult<RackHttpResponse>::Error(RackComError::UNAVAILABLE, "http method not supported");
     }
-
-    httplib::Response resp;
     if (!res) {
-        std::ostringstream oss;
-        oss << "http request failed"
-            << ", method: " << MethodToString(request.method) << ", url: " << baseUrl_ << request.path
-            << ", error: " << httplib::to_string(res.error());
-        LOG_ERROR << "RackHttpClient::Do-Error: " << oss.str();
-        return RackComResult<RackHttpResponse>::Error(RackComError::UNAVAILABLE, oss.str());
+        std::string msg = "http request failed: " + httplib::to_string(res.error());
+        LOG_ERROR << "RackHttpClient::Do-Error: " << msg;
+        return RackComResult<RackHttpResponse>::Error(RackComError::UNAVAILABLE, msg);
     }
-    resp = res.value();
-
+    httplib::Response resp = res.value();
     RackHttpResponse out;
     out.status = resp.status;
     out.body = resp.body;
-
     for (const auto &[k, v] : resp.headers) {
         out.headers[k] = v;
     }
-
     return RackComResult<RackHttpResponse>::Ok(std::move(out));
 }
 } // namespace rack::com

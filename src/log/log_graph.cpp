@@ -186,18 +186,38 @@ RackResult LogGraph::ReadJson(Json::Value &root, const std::string &path) const
 
 RackResult LogGraph::BuildGraph(const Json::Value &root, CallGraph &graph) const
 {
-    const Json::Value &nodes = root["nodes"];
-    const Json::Value &edges = root["edges"];
-    if (!nodes.isArray() || !edges.isArray()) {
-        LOG_ERROR << "invalid callstack json format, nodes_is_array=" << nodes.isArray()
-                  << ", edges_is_array=" << edges.isArray();
+    const Json::Value *nodes = nullptr;
+    const Json::Value *edges = nullptr;
+    if (ValidateGraphRoot(root, nodes, edges) != RACK_OK) {
         return RACK_FAIL;
     }
 
     graph = {};
-    graph.nodes.reserve(nodes.size());
-    graph.edges.reserve(edges.size());
+    if (BuildNodes(*nodes, graph) != RACK_OK) {
+        return RACK_FAIL;
+    }
+    if (BuildEdges(*edges, graph) != RACK_OK) {
+        return RACK_FAIL;
+    }
+    return RACK_OK;
+}
 
+RackResult LogGraph::ValidateGraphRoot(const Json::Value &root, const Json::Value *&nodes,
+                                       const Json::Value *&edges) const
+{
+    nodes = &root["nodes"];
+    edges = &root["edges"];
+    if (!nodes->isArray() || !edges->isArray()) {
+        LOG_ERROR << "invalid callstack json format, nodes_is_array=" << nodes->isArray()
+                  << ", edges_is_array=" << edges->isArray();
+        return RACK_FAIL;
+    }
+    return RACK_OK;
+}
+
+RackResult LogGraph::BuildNodes(const Json::Value &nodes, CallGraph &graph) const
+{
+    graph.nodes.reserve(nodes.size());
     for (Json::ArrayIndex i = 0; i < nodes.size(); ++i) {
         const Json::Value &node = nodes[i];
         if (!node.isObject()) {
@@ -227,7 +247,12 @@ RackResult LogGraph::BuildGraph(const Json::Value &root, CallGraph &graph) const
 
     graph.downstreamEdges.resize(graph.nodes.size());
     graph.upstreamEdges.resize(graph.nodes.size());
+    return RACK_OK;
+}
 
+RackResult LogGraph::BuildEdges(const Json::Value &edges, CallGraph &graph) const
+{
+    graph.edges.reserve(edges.size());
     for (Json::ArrayIndex i = 0; i < edges.size(); ++i) {
         const Json::Value &edge = edges[i];
         if (!edge.isObject()) {
@@ -253,7 +278,6 @@ RackResult LogGraph::BuildGraph(const Json::Value &root, CallGraph &graph) const
         graph.downstreamEdges[srcIt->second].push_back(dstIt->second);
         graph.upstreamEdges[dstIt->second].push_back(srcIt->second);
     }
-
     return RACK_OK;
 }
 

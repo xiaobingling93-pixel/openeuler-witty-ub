@@ -193,7 +193,6 @@ namespace lcne::common
   }
   LcneResult postLinkInfoNotify()
   {
-
     rack::com::RackHttpClient client(std::string(LCNE_URL) + ":" +
                                      std::string(LCNE_PORT));
     rack::com::RackComContext ctx;

@@ -20,10 +20,10 @@
 namespace failure::log {
 class LogCallstackCollector final : public LogCollector {
 public:
-    virtual RackResult Initialize() override;
-    virtual void UnInitialize() override;
-    virtual RackResult Start() override;
-    virtual void Stop() override;
+    RackResult Initialize() override;
+    void UnInitialize() override;
+    RackResult Start() override;
+    void Stop() override;
 
 private:
     RackResult ParseOpencodeConn(const std::unordered_map<std::string, std::string> &argMap);
